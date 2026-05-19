@@ -45,6 +45,22 @@ type AssistantPatientResponse = {
     total: number;
 };
 
+type DoctorPatientResponse = {
+    patients: Array<{
+        patient_id: string;
+        name: string;
+        email: string;
+        status: string;
+        tier: string;
+        care_status?: string;
+        illness_description?: string;
+        doctor_assigned_at?: string;
+        created_at: string;
+        updated_at: string;
+    }>;
+    total: number;
+};
+
 type AssistantDoctor = {
     doctor_id: string;
     email: string;
@@ -94,12 +110,17 @@ export default function DoctorPatients() {
         note: '',
     });
     const [isAssistantAccount, setIsAssistantAccount] = useState(false);
+    const [isDoctorAccount, setIsDoctorAccount] = useState(false);
     const [canAssignPatients, setCanAssignPatients] = useState(false);
     const [assistantDoctors, setAssistantDoctors] = useState<AssistantDoctor[]>([]);
     const [assignTarget, setAssignTarget] = useState<PatientInvite | null>(null);
     const [selectedDoctorId, setSelectedDoctorId] = useState('');
     const [forceReassign, setForceReassign] = useState(false);
     const [isAssigning, setIsAssigning] = useState(false);
+    const [outcomeTarget, setOutcomeTarget] = useState<PatientInvite | null>(null);
+    const [outcome, setOutcome] = useState<'completed' | 'follow_up_needed' | 'referred_out' | 'not_appropriate_for_platform'>('completed');
+    const [doctorNotes, setDoctorNotes] = useState('');
+    const [isSavingOutcome, setIsSavingOutcome] = useState(false);
 
     useEffect(() => {
         if (!hasRole('doctor')) {
@@ -124,6 +145,7 @@ export default function DoctorPatients() {
         try {
             if (session.user.role === 'assistant') {
                 setIsAssistantAccount(true);
+                setIsDoctorAccount(false);
                 const [profileResponse, doctorsResponse, response] = await Promise.all([
                     apiRequest<AssistantMeResponse>('/assistant/me', { token: session.access_token }),
                     apiRequest<{ Doctors: AssistantDoctor[] }>('/assistant/doctors', { token: session.access_token }),
@@ -147,10 +169,25 @@ export default function DoctorPatients() {
                 return;
             }
 
-            const response = await apiRequest<PatientInviteResponse>('/doctor/patient-invites', {
-                token: session.access_token,
-            });
-            setInvites(response.data?.invites || []);
+            setIsAssistantAccount(false);
+            setIsDoctorAccount(true);
+            const [patientsResponse, invitesResponse] = await Promise.all([
+                apiRequest<DoctorPatientResponse>('/doctor/patients', { token: session.access_token }),
+                apiRequest<PatientInviteResponse>('/doctor/patient-invites', { token: session.access_token }),
+            ]);
+            const assignedPatients = (patientsResponse.data?.patients || []).map((patient) => ({
+                invite_id: patient.patient_id,
+                email: patient.email,
+                patient_id: patient.patient_id,
+                status: patient.status === 'active' ? 'accepted' as const : 'pending' as const,
+                expires_at: patient.updated_at || patient.created_at,
+                created_at: patient.created_at,
+                is_expired: false,
+                care_status: patient.care_status,
+                illness_description: patient.illness_description,
+                doctor_assigned_at: patient.doctor_assigned_at,
+            }));
+            setInvites([...assignedPatients, ...(invitesResponse.data?.invites || [])]);
         } catch (error) {
             setNotice({
                 type: 'error',
@@ -256,6 +293,42 @@ export default function DoctorPatients() {
         }
     };
 
+    const openOutcome = (patient: PatientInvite) => {
+        setOutcomeTarget(patient);
+        setOutcome('completed');
+        setDoctorNotes('');
+    };
+
+    const saveOutcome = async (event: React.FormEvent) => {
+        event.preventDefault();
+        const session = getSession();
+        if (!session || !outcomeTarget?.patient_id) {
+            return;
+        }
+
+        setIsSavingOutcome(true);
+        setNotice(null);
+
+        try {
+            const response = await apiRequest<{ message: string }>(`/doctor/patients/${outcomeTarget.patient_id}/treatment-outcome`, {
+                method: 'PATCH',
+                token: session.access_token,
+                body: JSON.stringify({
+                    outcome,
+                    ...(doctorNotes.trim() ? { doctor_notes: doctorNotes.trim() } : {}),
+                }),
+            });
+
+            setNotice({ type: 'success', message: response.data?.message || 'Treatment outcome saved.' });
+            setOutcomeTarget(null);
+            await loadInvites();
+        } catch (error) {
+            setNotice({ type: 'error', message: error instanceof Error ? error.message : 'Unable to save treatment outcome.' });
+        } finally {
+            setIsSavingOutcome(false);
+        }
+    };
+
     return (
         <DashboardLayout role="doctor">
             <div className="space-y-6">
@@ -263,10 +336,10 @@ export default function DoctorPatients() {
                     <div>
                         <h2 className="text-2xl font-bold text-[#4a3428]">{isAssistantAccount ? 'Assigned Patients' : 'My Patients'}</h2>
                         <p className="text-gray-600">
-                            {isAssistantAccount ? 'Patients visible through assigned Doctor relationships.' : 'Invite patients by email and track onboarding status.'}
+                            {isAssistantAccount ? 'Patients visible through assigned Doctor relationships.' : 'Manage assigned patients and invitation status.'}
                         </p>
                     </div>
-                    {!isAssistantAccount && (
+                    {isDoctorAccount && (
                         <Button
                             className="rounded-full"
                             onClick={() => setIsInviteOpen(true)}
@@ -337,12 +410,15 @@ export default function DoctorPatients() {
                                     {isAssistantAccount && canAssignPatients && (
                                         <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
                                     )}
+                                    {isDoctorAccount && (
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Actions</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody>
                                 {isLoading && (
                                     <tr>
-                                        <td colSpan={isAssistantAccount && canAssignPatients ? 6 : 5} className="px-4 py-8 text-center text-gray-500">
+                                        <td colSpan={(isAssistantAccount && canAssignPatients) || isDoctorAccount ? 6 : 5} className="px-4 py-8 text-center text-gray-500">
                                             Loading patients...
                                         </td>
                                     </tr>
@@ -350,7 +426,7 @@ export default function DoctorPatients() {
 
                                 {!isLoading && filteredInvites.length === 0 && (
                                     <tr>
-                                        <td colSpan={isAssistantAccount && canAssignPatients ? 6 : 5} className="px-4 py-8 text-center text-gray-500">
+                                        <td colSpan={(isAssistantAccount && canAssignPatients) || isDoctorAccount ? 6 : 5} className="px-4 py-8 text-center text-gray-500">
                                             No patients found.
                                         </td>
                                     </tr>
@@ -365,6 +441,9 @@ export default function DoctorPatients() {
                                                     <p className="font-medium text-[#4a3428]">{formatNameFromEmail(invite.email)}</p>
                                                     <p className="text-sm text-gray-600">{invite.email}</p>
                                                     {isAssistantAccount && invite.illness_description && (
+                                                        <p className="mt-1 max-w-sm text-xs text-gray-500">{invite.illness_description}</p>
+                                                    )}
+                                                    {isDoctorAccount && invite.illness_description && (
                                                         <p className="mt-1 max-w-sm text-xs text-gray-500">{invite.illness_description}</p>
                                                     )}
                                                 </div>
@@ -386,6 +465,16 @@ export default function DoctorPatients() {
                                                     Assign
                                                 </Button>
                                             </td>
+                                        )}
+                                        {isDoctorAccount && invite.patient_id && invite.care_status && (
+                                            <td className="px-4 py-4">
+                                                <Button size="sm" variant="outline" onClick={() => openOutcome(invite)} leftIcon={<Stethoscope className="h-4 w-4" />}>
+                                                    Outcome
+                                                </Button>
+                                            </td>
+                                        )}
+                                        {isDoctorAccount && (!invite.patient_id || !invite.care_status) && (
+                                            <td className="px-4 py-4 text-sm text-gray-400">Invite</td>
                                         )}
                                     </tr>
                                 ))}
@@ -487,6 +576,48 @@ export default function DoctorPatients() {
                                     <Button type="submit" isLoading={isAssigning} disabled={!selectedDoctorId || assistantDoctors.length === 0} leftIcon={<Stethoscope className="h-5 w-5" />}>
                                         Save Assignment
                                     </Button>
+                                </div>
+                            </form>
+                        )}
+                    </Modal>
+                )}
+
+                {isDoctorAccount && (
+                    <Modal isOpen={Boolean(outcomeTarget)} onClose={() => setOutcomeTarget(null)} title="Treatment Outcome" size="lg">
+                        {outcomeTarget && (
+                            <form onSubmit={saveOutcome} className="space-y-5 p-6">
+                                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                                    <p className="font-semibold text-[#4a3428]">{formatNameFromEmail(outcomeTarget.email)}</p>
+                                    <p className="text-sm text-gray-600">{outcomeTarget.illness_description || 'No illness details provided.'}</p>
+                                </div>
+                                <div>
+                                    <label htmlFor="outcome" className="mb-2 block text-sm font-medium text-gray-700">Outcome</label>
+                                    <select
+                                        id="outcome"
+                                        value={outcome}
+                                        onChange={(event) => setOutcome(event.target.value as typeof outcome)}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                                    >
+                                        <option value="completed">Completed / treated</option>
+                                        <option value="follow_up_needed">Further treatment needed</option>
+                                        <option value="referred_out">Referred out</option>
+                                        <option value="not_appropriate_for_platform">Not appropriate for platform</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="doctorNotes" className="mb-2 block text-sm font-medium text-gray-700">Doctor Notes</label>
+                                    <textarea
+                                        id="doctorNotes"
+                                        rows={5}
+                                        value={doctorNotes}
+                                        onChange={(event) => setDoctorNotes(event.target.value)}
+                                        placeholder="Clinical/admin notes for this outcome."
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                                    />
+                                </div>
+                                <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 sm:flex-row sm:justify-end">
+                                    <Button type="button" variant="secondary" onClick={() => setOutcomeTarget(null)} disabled={isSavingOutcome}>Cancel</Button>
+                                    <Button type="submit" isLoading={isSavingOutcome} leftIcon={<Stethoscope className="h-5 w-5" />}>Save Outcome</Button>
                                 </div>
                             </form>
                         )}
