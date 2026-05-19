@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { getSession, hasRole } from '@/lib/auth';
 import { apiRequest, getApiBaseUrl } from '@/lib/api';
 import { Button, Avatar } from '@/components/ui';
+import { ClipboardList } from 'lucide-react';
 
 type AssignedGender = 'girl' | 'boy';
 
@@ -138,6 +139,32 @@ export default function PatientDashboard() {
                         </div>
                     )}
                 </div>
+
+                {/* Care Request Widget/Notice */}
+                {profile?.patient && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6 flex flex-col md:flex-row items-center justify-between gap-4 border border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-[#fef3e8] rounded-xl text-[#E67E3C]">
+                                <ClipboardList className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-[#4a3428]">
+                                    Care Status: <span className="capitalize">{profile.patient.care_status?.replace(/_/g, ' ') || 'Inactive'}</span>
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    {profile.patient.care_status === 'needs_care' && 'Your care request is being reviewed by our clinical staff.'}
+                                    {profile.patient.care_status === 'assigned' && `You have been assigned to Doctor ${profile.Doctor?.email?.split('@')[0] || ''}.`}
+                                    {profile.patient.care_status === 'in_treatment' && 'You are currently in an active treatment episode.'}
+                                    {profile.patient.care_status === 'treated' && 'Your latest treatment episode is completed. Let us know if you need care again.'}
+                                    {(profile.patient.care_status === 'inactive' || !profile.patient.care_status) && 'You do not have any active clinical care requests.'}
+                                </p>
+                            </div>
+                        </div>
+                        <Button variant="outline" onClick={() => router.push('/dashboard/patient/care-requests')}>
+                            Manage Care
+                        </Button>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left Column: Avatar & Doctor */}

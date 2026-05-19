@@ -112,6 +112,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
     const PatientMenuItems = [
         { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard/patient' },
+        { name: 'Care Requests', icon: ClipboardList, path: '/dashboard/patient/care-requests' },
         { name: 'My Profile', icon: User, path: '/dashboard/patient/profile' },
         { name: 'Chat', icon: MessageSquare, path: '/dashboard/patient/chat' },
     ];
