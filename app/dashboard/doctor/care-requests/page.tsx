@@ -140,7 +140,8 @@ export default function AssistantCareRequestsPage() {
     };
 
     useEffect(() => {
-        if (!hasRole('assistant')) {
+        const session = getSession();
+        if (!session || session.user.role !== 'assistant') {
             router.push('/auth/login');
             return;
         }
