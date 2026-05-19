@@ -348,11 +348,12 @@ export default function PatientCareRequestsPage() {
                                 id="urgency"
                                 value={formData.urgency}
                                 onChange={(e) => setFormData({...formData, urgency: e.target.value as any})}
-                            >
-                                <option value="low">Low (Non-urgent/Routine)</option>
-                                <option value="normal">Normal (Standard Care)</option>
-                                <option value="high">High (Needs Prompt Review)</option>
-                            </Select>
+                                options={[
+                                    { value: 'low', label: 'Low (Non-urgent/Routine)' },
+                                    { value: 'normal', label: 'Normal (Standard Care)' },
+                                    { value: 'high', label: 'High (Needs Prompt Review)' }
+                                ]}
+                            />
                         </div>
 
                         <div className="flex flex-col gap-1.5">
@@ -361,11 +362,12 @@ export default function PatientCareRequestsPage() {
                                 id="preferred_doctor_gender"
                                 value={formData.preferred_doctor_gender}
                                 onChange={(e) => setFormData({...formData, preferred_doctor_gender: e.target.value as any})}
-                            >
-                                <option value="any">No Preference</option>
-                                <option value="female">Female</option>
-                                <option value="male">Male</option>
-                            </Select>
+                                options={[
+                                    { value: 'any', label: 'No Preference' },
+                                    { value: 'female', label: 'Female' },
+                                    { value: 'male', label: 'Male' }
+                                ]}
+                            />
                         </div>
                     </div>
 
