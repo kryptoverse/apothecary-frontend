@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getSession, hasRole } from '@/lib/auth';
@@ -18,6 +18,120 @@ export default function PatientDashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [isAssigningAvatar, setIsAssigningAvatar] = useState(false);
     const [error, setError] = useState('');
+
+    const [messages, setMessages] = useState<{ role: 'ai' | 'user', content: string }[]>([
+        { role: 'ai', content: "Hello! I'm your Apothecary AI assistant. How are you feeling today?" }
+    ]);
+    const [chatInput, setChatInput] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+    // Persists the backend session_id across messages so the LLM has memory.
+    // useRef (not useState) so updates never trigger a re-render.
+    const chatSessionIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    const handleChatSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!chatInput.trim() || isTyping) return;
+        
+        const userMsg = chatInput.trim();
+        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+        setChatInput('');
+        setIsTyping(true);
+        
+        // Add empty AI message to stream into
+        setMessages(prev => [...prev, { role: 'ai', content: '' }]);
+        
+        try {
+            const session = getSession();
+            let viewerToken = '';
+            if (avatarViewerUrl) {
+                const urlParams = new URLSearchParams(avatarViewerUrl.split('?')[1]);
+                viewerToken = urlParams.get('session') || '';
+            }
+
+            const res = await fetch(`${getApiBaseUrl()}/chat/message/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify({ 
+                    message: userMsg,
+                    viewer_session_id: viewerToken,
+                    // Reuse existing session so the AI retains memory of this conversation
+                    ...(chatSessionIdRef.current ? { session_id: chatSessionIdRef.current } : {})
+                })
+            });
+            
+            if (!res.ok) throw new Error('Chat failed');
+            
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            
+            if (reader) {
+                let currentAiMessage = '';
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    
+                    // Keep the last incomplete line in the buffer
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.error) {
+                                    setMessages(prev => {
+                                        const newMsgs = [...prev];
+                                        newMsgs[newMsgs.length - 1] = { role: 'ai', content: `Error: ${data.error}` };
+                                        return newMsgs;
+                                    });
+                                    setIsTyping(false);
+                                    break;
+                                }
+
+                                if (data.text) {
+                                    currentAiMessage += data.text;
+                                    setMessages(prev => {
+                                        const newMsgs = [...prev];
+                                        newMsgs[newMsgs.length - 1] = { role: 'ai', content: currentAiMessage };
+                                        return newMsgs;
+                                    });
+                                }
+                                // Capture the session_id from the final done event so all
+                                // future messages reuse the same backend session (memory).
+                                if (data.done && data.session_id) {
+                                    chatSessionIdRef.current = data.session_id;
+                                }
+                            } catch (e) {
+                                console.warn('Failed to parse SSE data', e, line);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            setMessages(prev => {
+                const newMsgs = [...prev];
+                newMsgs[newMsgs.length - 1] = { role: 'ai', content: 'Sorry, I encountered an error. Please try again.' };
+                return newMsgs;
+            });
+        } finally {
+            setIsTyping(false);
+        }
+    };
 
     const loadDashboard = useCallback(async () => {
         const session = getSession();
@@ -62,6 +176,32 @@ export default function PatientDashboard() {
                 setIsLoading(false);
             });
     }, [loadDashboard, router]);
+
+    useEffect(() => {
+        if (!avatarViewerUrl) return;
+
+        const urlParams = new URLSearchParams(avatarViewerUrl.split('?')[1] || '');
+        const viewerToken = urlParams.get('session');
+        if (!viewerToken) return;
+
+        // Ping the backend every 10 minutes to extend the avatar viewer session DB expiration
+        const intervalId = setInterval(async () => {
+            const session = getSession();
+            if (!session) return;
+            
+            try {
+                await apiRequest('/avatar-viewer/session/extend', {
+                    method: 'PUT',
+                    token: session.access_token,
+                    body: JSON.stringify({ viewerToken })
+                });
+            } catch (err) {
+                console.error('Failed to extend avatar viewer session', err);
+            }
+        }, 10 * 60 * 1000); // 10 minutes
+
+        return () => clearInterval(intervalId);
+    }, [avatarViewerUrl]);
 
     const assignAvatar = async (gender: AssignedGender) => {
         const session = getSession();
@@ -239,38 +379,34 @@ export default function PatientDashboard() {
                             </div>
                         </div>
 
-                        {/* Chat System Mock */}
+                        {/* Real AI Chat System */}
                         <div className="bg-white rounded-2xl shadow-sm p-6 flex flex-col h-[400px]">
                             <h3 className="text-xl font-bold text-[#4a3428] mb-4 flex-shrink-0">AI Assistant Chat</h3>
                             
-                            <div className="flex-1 bg-gray-50 rounded-xl border border-gray-100 p-4 overflow-y-auto mb-4 space-y-3">
-                                {/* Mock Messages */}
-                                <div className="flex gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-[#E67E3C] text-white flex items-center justify-center font-bold flex-shrink-0">
-                                        AI
+                            <div ref={chatContainerRef} className="flex-1 bg-gray-50 rounded-xl border border-gray-100 p-4 overflow-y-auto mb-4 space-y-3">
+                                {messages.map((msg, idx) => (
+                                    <div key={idx} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0 ${msg.role === 'user' ? 'bg-[#4a3428] text-white' : 'bg-[#E67E3C] text-white'}`}>
+                                            {msg.role === 'user' ? 'You' : 'AI'}
+                                        </div>
+                                        <div className={`p-3 rounded-xl shadow-sm text-sm ${msg.role === 'user' ? 'bg-[#E67E3C] text-white' : 'bg-white border border-gray-100 text-gray-700 whitespace-pre-wrap'}`}>
+                                            {msg.content}
+                                        </div>
                                     </div>
-                                    <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 text-sm text-gray-700">
-                                        Hello! I'm your Apothecary AI assistant. How are you feeling today?
-                                    </div>
-                                </div>
-                                <div className="flex gap-3 flex-row-reverse">
-                                    <div className="w-8 h-8 rounded-full bg-[#4a3428] text-white flex items-center justify-center font-bold flex-shrink-0">
-                                        You
-                                    </div>
-                                    <div className="bg-[#E67E3C] text-white p-3 rounded-xl shadow-sm text-sm">
-                                        I'm doing well, just checking out the new dashboard!
-                                    </div>
-                                </div>
+                                ))}
                             </div>
 
-                            <div className="flex gap-2">
+                            <form onSubmit={handleChatSubmit} className="flex gap-2">
                                 <input 
                                     type="text" 
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    disabled={isTyping}
                                     className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E67E3C]"
-                                    placeholder="Type a message... (Mock)"
+                                    placeholder="Type a message..."
                                 />
-                                <Button size="sm" className="px-4">Send</Button>
-                            </div>
+                                <Button type="submit" size="sm" className="px-4" disabled={isTyping || !chatInput.trim()}>Send</Button>
+                            </form>
                         </div>
                     </div>
                 </div>
