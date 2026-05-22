@@ -24,6 +24,7 @@ export default function PatientDashboard() {
     ]);
     const [chatInput, setChatInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
+    const isTypingRef = useRef(false);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     // Persists the backend session_id across messages so the LLM has memory.
     // useRef (not useState) so updates never trigger a re-render.
@@ -37,11 +38,13 @@ export default function PatientDashboard() {
 
     const handleChatSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!chatInput.trim() || isTyping) return;
+        if (!chatInput.trim() || isTypingRef.current) return;
         
         const userMsg = chatInput.trim();
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         setChatInput('');
+        
+        isTypingRef.current = true;
         setIsTyping(true);
         
         // Add empty AI message to stream into
@@ -97,6 +100,7 @@ export default function PatientDashboard() {
                                         newMsgs[newMsgs.length - 1] = { role: 'ai', content: `Error: ${data.error}` };
                                         return newMsgs;
                                     });
+                                    isTypingRef.current = false;
                                     setIsTyping(false);
                                     break;
                                 }
@@ -129,6 +133,7 @@ export default function PatientDashboard() {
                 return newMsgs;
             });
         } finally {
+            isTypingRef.current = false;
             setIsTyping(false);
         }
     };
