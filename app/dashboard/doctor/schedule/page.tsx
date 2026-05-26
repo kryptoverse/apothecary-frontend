@@ -121,7 +121,7 @@ export default function DoctorSchedule() {
 
     if (!mounted) {
         return (
-            <DashboardLayout>
+            <DashboardLayout role="doctor">
                 <div className="p-8 animate-pulse">
                     <div className="h-8 bg-gray-200 rounded w-48 mb-6"></div>
                     <div className="h-64 bg-gray-100 rounded-2xl"></div>
