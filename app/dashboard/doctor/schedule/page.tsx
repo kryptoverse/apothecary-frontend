@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { hasRole } from '@/lib/auth';
+import { hasRole, getSession } from '@/lib/auth';
 import { apiRequest } from '@/lib/api';
 
 interface SessionBooking {
@@ -25,9 +25,10 @@ export default function DoctorSchedule() {
 
     // Modal state
     const [showGenerateModal, setShowGenerateModal] = useState(false);
-    const [genStartTime, setGenStartTime] = useState('09:00');
-    const [genEndTime, setGenEndTime] = useState('17:00');
+    const [timeBlocks, setTimeBlocks] = useState([{ start: '09:00', end: '17:00' }]);
     const [isGenerating, setIsGenerating] = useState(false);
+
+    const token = typeof window !== 'undefined' ? getSession()?.access_token : undefined;
 
     useEffect(() => {
         if (!hasRole('doctor')) {
@@ -40,7 +41,7 @@ export default function DoctorSchedule() {
     const fetchSlots = async () => {
         try {
             setLoading(true);
-            const data = await apiRequest<SessionBooking[]>('/doctor/slots');
+            const data = await apiRequest<SessionBooking[]>('/doctor/slots', { token });
             if (data.success) {
                 setSlots(data.data || []);
             }
@@ -51,23 +52,26 @@ export default function DoctorSchedule() {
         }
     };
 
-    const handleGenerateSlots = async () => {
+        const handleGenerateSlots = async () => {
         try {
             setIsGenerating(true);
             const dateStr = selectedDate.toISOString().split('T')[0];
-            const res = await apiRequest<{ generated_slots: number }>('/doctor/slots/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date: dateStr,
-                    start_time: genStartTime,
-                    end_time: genEndTime
+            
+            await Promise.all(timeBlocks.map(block => 
+                apiRequest<{ generated_slots: number }>('/doctor/slots/generate', {
+                    method: 'POST',
+                    token,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: dateStr,
+                        start_time: block.start,
+                        end_time: block.end
+                    })
                 })
-            });
-            if (res.success) {
-                setShowGenerateModal(false);
-                fetchSlots();
-            }
+            ));
+            
+            setShowGenerateModal(false);
+            fetchSlots();
         } catch (error) {
             console.error('Failed to generate slots', error);
             alert('Failed to generate slots. Please check your time range.');
@@ -267,25 +271,51 @@ export default function DoctorSchedule() {
                             Generate 50-minute slots for <strong>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</strong>.
                         </p>
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                                <input
-                                    type="time"
-                                    value={genStartTime}
-                                    onChange={(e) => setGenStartTime(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E67E3C] focus:border-transparent"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                                <input
-                                    type="time"
-                                    value={genEndTime}
-                                    onChange={(e) => setGenEndTime(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E67E3C] focus:border-transparent"
-                                />
-                            </div>
+                                                <div className="space-y-4">
+                            {timeBlocks.map((block, index) => (
+                                <div key={index} className="flex gap-4 items-end bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                                        <input
+                                            type="time"
+                                            value={block.start}
+                                            onChange={(e) => {
+                                                const newBlocks = [...timeBlocks];
+                                                newBlocks[index].start = e.target.value;
+                                                setTimeBlocks(newBlocks);
+                                            }}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E67E3C] focus:border-transparent bg-white"
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                                        <input
+                                            type="time"
+                                            value={block.end}
+                                            onChange={(e) => {
+                                                const newBlocks = [...timeBlocks];
+                                                newBlocks[index].end = e.target.value;
+                                                setTimeBlocks(newBlocks);
+                                            }}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E67E3C] focus:border-transparent bg-white"
+                                        />
+                                    </div>
+                                    {timeBlocks.length > 1 && (
+                                        <button 
+                                            onClick={() => setTimeBlocks(timeBlocks.filter((_, i) => i !== index))}
+                                            className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors font-medium mb-[1px]"
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                            <button
+                                onClick={() => setTimeBlocks([...timeBlocks, { start: '13:00', end: '17:00' }])}
+                                className="text-sm font-semibold text-[#E67E3C] hover:text-[#d16b2a] flex items-center gap-1"
+                            >
+                                + Add another time block
+                            </button>
                         </div>
 
                         <div className="mt-8 flex gap-3">
