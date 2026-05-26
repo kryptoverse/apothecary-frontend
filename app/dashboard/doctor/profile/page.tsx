@@ -536,60 +536,6 @@ export default function DoctorProfile() {
                                     </div>
                                 )}
 
-                                
-                                        </div>
-
-                                        {draft.Doctor.availability.length === 0 && (
-                                            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-gray-500">
-                                                No availability slots set.
-                                            </div>
-                                        )}
-
-                                        {draft.Doctor.availability.map((slot, index) => (
-                                            <div key={index} className="grid grid-cols-1 gap-4 rounded-lg border border-gray-200 p-4 md:grid-cols-6">
-                                                <div>
-                                                    <label className="mb-2 block text-xs font-medium text-gray-500">Day</label>
-                                                    <select
-                                                        value={slot.day_of_week}
-                                                        disabled={!isEditing}
-                                                        onChange={(event) => updateAvailability(index, 'day_of_week', Number(event.target.value))}
-                                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                                                    >
-                                                        {days.map((day, dayIndex) => (
-                                                            <option key={day} value={dayIndex}>{day}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <SmallField label="Start" type="time" value={slot.start_time} disabled={!isEditing} onChange={(value) => updateAvailability(index, 'start_time', value)} />
-                                                <SmallField label="End" type="time" value={slot.end_time} disabled={!isEditing} onChange={(value) => updateAvailability(index, 'end_time', value)} />
-                                                <TimezoneSelect
-                                                    label="Timezone"
-                                                    value={slot.timezone || ''}
-                                                    disabled={!isEditing}
-                                                    compact
-                                                    onChange={(value) => updateAvailability(index, 'timezone', value)}
-                                                />
-                                                <SmallField label="Video Link" value={slot.video_link || ''} disabled={!isEditing} onChange={(value) => updateAvailability(index, 'video_link', value)} />
-                                                <div className="flex items-end justify-between gap-3">
-                                                    <label className="flex items-center gap-2 pb-2 text-sm text-gray-700">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={slot.is_available !== false}
-                                                            disabled={!isEditing}
-                                                            onChange={(event) => updateAvailability(index, 'is_available', event.target.checked)}
-                                                        />
-                                                        Active
-                                                    </label>
-                                                    {isEditing && (
-                                                        <button onClick={() => removeAvailability(index)} className="pb-2 text-sm font-medium text-red-600">
-                                                            Remove
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
 
                                 {activeTab === 'settings' && (
                                     <div className="space-y-6">
