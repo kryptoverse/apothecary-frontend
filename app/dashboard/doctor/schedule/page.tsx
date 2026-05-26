@@ -22,6 +22,7 @@ export default function DoctorSchedule() {
     const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
     const [slots, setSlots] = useState<SessionBooking[]>([]);
     const [loading, setLoading] = useState(true);
+    const [mounted, setMounted] = useState(false);
 
     // Modal state
     const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -31,6 +32,7 @@ export default function DoctorSchedule() {
     const token = typeof window !== 'undefined' ? getSession()?.access_token : undefined;
 
     useEffect(() => {
+        setMounted(true);
         if (!hasRole('doctor')) {
             router.push('/auth/login');
         } else {
@@ -116,6 +118,17 @@ export default function DoctorSchedule() {
             default: return 'bg-red-100 text-red-700';
         }
     };
+
+    if (!mounted) {
+        return (
+            <DashboardLayout>
+                <div className="p-8 animate-pulse">
+                    <div className="h-8 bg-gray-200 rounded w-48 mb-6"></div>
+                    <div className="h-64 bg-gray-100 rounded-2xl"></div>
+                </div>
+            </DashboardLayout>
+        );
+    }
 
     return (
         <DashboardLayout role="doctor">

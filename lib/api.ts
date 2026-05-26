@@ -1,5 +1,5 @@
 export const API_BASE_URL = ( // env value || 
-    'http://localhost:5000/api/v1'
+    'https://apo-backend-a3bb1c9ce22d.herokuapp.com/api/v1'
 ).replace(/\/+$/, '');
 
 export type ApiResponse<T> = {
