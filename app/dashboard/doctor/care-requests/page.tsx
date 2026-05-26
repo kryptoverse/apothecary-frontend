@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentType, FormEvent, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -189,6 +189,14 @@ export default function AssistantCareRequestsPage() {
     }, [router]);
 
     const canAssign = permissions?.can_assign_patients || false;
+    const currentUserId = getSession()?.user.user_id;
+
+    const isClaimedByMe = useCallback((request: CareRequest) => {
+        return Boolean(
+            request.is_claimed_by_me ||
+            (currentUserId && request.claimed_by_user_id === currentUserId)
+        );
+    }, [currentUserId]);
 
     const changeQueue = async (view: QueueView) => {
         setQueueView(view);
@@ -332,10 +340,10 @@ export default function AssistantCareRequestsPage() {
 
     const stats = useMemo(() => ({
         queue: requests.length,
-        claimed: requests.filter(request => request.is_claimed_by_me).length,
+        claimed: requests.filter(request => isClaimedByMe(request)).length,
         ready: requests.filter(request => request.status === 'pending_assignment').length,
         doctorsAvailable: doctors.filter(doctor => doctor.is_available_for_assignment).length
-    }), [requests, doctors]);
+    }), [requests, doctors, isClaimedByMe]);
 
     if (isLoading) {
         return (
@@ -478,7 +486,9 @@ export default function AssistantCareRequestsPage() {
                                         <td className="px-4 py-4 align-top">
                                             {request.is_claimed ? (
                                                 <div className="text-xs text-gray-600">
-                                                    <p className="font-semibold text-[#4a3428]">{request.claimed_by_email || 'Claimed assistant'}</p>
+                                                    <p className="font-semibold text-[#4a3428]">
+                                                        {isClaimedByMe(request) ? 'You' : request.claimed_by_email || 'Another assistant'}
+                                                    </p>
                                                     <p>Claimed {formatDateTime(request.claimed_at)}</p>
                                                     <p>Expires {formatDateTime(request.claim_expires_at)}</p>
                                                 </div>
@@ -503,7 +513,7 @@ export default function AssistantCareRequestsPage() {
                                                     <Button size="sm" onClick={() => claimRequest(request)} disabled={isSaving || !canAssign}>
                                                         Claim
                                                     </Button>
-                                                ) : request.is_claimed_by_me ? (
+                                                ) : isClaimedByMe(request) ? (
                                                     <>
                                                         <Button size="sm" variant="secondary" onClick={() => openTriageModal(request)}>
                                                             Triage
