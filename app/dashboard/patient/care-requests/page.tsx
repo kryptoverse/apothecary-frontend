@@ -309,6 +309,10 @@ export default function PatientCareRequestsPage() {
         }
     };
 
+    const openTriageChat = (request: CareRequest) => {
+        router.push(`/dashboard/patient/chat?careRequestId=${request.care_request_id}`);
+    };
+
     if (isLoading) {
         return (
             <DashboardLayout role="patient">
@@ -428,6 +432,18 @@ export default function PatientCareRequestsPage() {
                                 <p>If your symptoms become urgent or unsafe, use local emergency services. Apothecary request review is not an emergency response channel.</p>
                             </div>
                         </div>
+
+                        {['triage_claimed', 'triage_in_progress', 'pending_assignment'].includes(activeRequest.status) && (
+                            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="font-semibold text-blue-900">Care team messaging is available</p>
+                                    <p className="mt-1 text-sm text-blue-800">Use this thread to answer triage questions before Doctor assignment.</p>
+                                </div>
+                                <Button variant="outline" onClick={() => openTriageChat(activeRequest)} leftIcon={<MessageSquare className="h-4 w-4" />}>
+                                    Message Care Team
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="rounded-lg border border-dashed border-gray-200 bg-white p-10 text-center shadow-sm">

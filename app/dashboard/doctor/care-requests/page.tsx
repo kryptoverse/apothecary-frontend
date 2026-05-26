@@ -13,6 +13,7 @@ import {
     ClipboardList,
     Clock,
     Lock,
+    MessageSquare,
     RefreshCcw,
     Search,
     ShieldAlert,
@@ -244,6 +245,10 @@ export default function AssistantCareRequestsPage() {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const openTriageChat = (request: CareRequest) => {
+        router.push(`/dashboard/doctor/chat?careRequestId=${request.care_request_id}`);
     };
 
     const openTriageModal = (request: CareRequest) => {
@@ -515,6 +520,9 @@ export default function AssistantCareRequestsPage() {
                                                     </Button>
                                                 ) : isClaimedByMe(request) ? (
                                                     <>
+                                                        <Button size="sm" variant="outline" onClick={() => openTriageChat(request)} leftIcon={<MessageSquare className="h-4 w-4" />}>
+                                                            Chat
+                                                        </Button>
                                                         <Button size="sm" variant="secondary" onClick={() => openTriageModal(request)}>
                                                             Triage
                                                         </Button>

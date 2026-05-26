@@ -1,0 +1,662 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import {
+    AlertCircle,
+    Check,
+    ClipboardList,
+    Lock,
+    MessageSquare,
+    RefreshCcw,
+    Save,
+    Search,
+    Send,
+    ShieldCheck,
+    Stethoscope,
+    Wifi,
+    WifiOff
+} from 'lucide-react';
+import { apiRequest } from '@/lib/api';
+import { getSession } from '@/lib/auth';
+import { createTriageChatSocket, type TriageChatSocket } from '@/lib/triageChatSocket';
+import { Button } from '@/components/ui';
+
+type WorkspaceRole = 'assistant' | 'patient' | 'admin';
+
+type TriageConversationStatus = 'open' | 'closed' | 'archived';
+
+type TriageConversation = {
+    conversation_id: string;
+    care_request_id: string;
+    patient_id: string;
+    patient_name: string;
+    patient_email?: string;
+    assistant_user_id?: string | null;
+    assistant_email?: string | null;
+    doctor_id?: string | null;
+    doctor_name?: string | null;
+    status: TriageConversationStatus;
+    care_request_status?: string;
+    urgency?: 'low' | 'normal' | 'high';
+    reason?: string;
+    doctor_handoff_notes: string;
+    unread_count: number;
+    last_message_at?: string;
+    closed_at?: string;
+    created_at: string;
+    updated_at: string;
+};
+
+type TriageMessage = {
+    message_id: string;
+    conversation_id: string;
+    sender_user_id?: string | null;
+    sender_role: 'patient' | 'assistant' | 'admin' | 'system';
+    message_type: 'text' | 'system';
+    body: string;
+    created_at: string;
+};
+
+type ConversationsResponse = {
+    conversations: TriageConversation[];
+};
+
+type ConversationResponse = {
+    conversation: TriageConversation;
+};
+
+type MessagesResponse = {
+    messages: TriageMessage[];
+};
+
+type SendMessageResponse = {
+    message: TriageMessage;
+    conversation: TriageConversation;
+};
+
+type SocketAck<T> = {
+    success: boolean;
+    message?: string;
+    data?: T;
+};
+
+const urgencyClasses: Record<string, string> = {
+    low: 'bg-blue-50 text-blue-700 border-blue-200',
+    normal: 'bg-green-50 text-green-700 border-green-200',
+    high: 'bg-red-50 text-red-700 border-red-200'
+};
+
+function formatStatus(value?: string) {
+    return (value || '-').replace(/_/g, ' ');
+}
+
+function formatTime(value?: string) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+function isOwnMessage(message: TriageMessage, role: WorkspaceRole) {
+    return message.sender_role === role || (role === 'assistant' && message.sender_role === 'assistant');
+}
+
+export default function TriageChatWorkspace({ role, initialCareRequestId }: { role: WorkspaceRole; initialCareRequestId?: string | null }) {
+    const [conversations, setConversations] = useState<TriageConversation[]>([]);
+    const [selectedConversation, setSelectedConversation] = useState<TriageConversation | null>(null);
+    const [messages, setMessages] = useState<TriageMessage[]>([]);
+    const [messageBody, setMessageBody] = useState('');
+    const [notesDraft, setNotesDraft] = useState('');
+    const [search, setSearch] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSending, setIsSending] = useState(false);
+    const [isSavingNotes, setIsSavingNotes] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
+    const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+    const socketRef = useRef<TriageChatSocket | null>(null);
+    const selectedIdRef = useRef<string | null>(null);
+    const messageEndRef = useRef<HTMLDivElement | null>(null);
+    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const canWriteNotes = role === 'assistant' || role === 'admin';
+    const activeConversationId = selectedConversation?.conversation_id || null;
+
+    const mergeConversation = useCallback((conversation: TriageConversation) => {
+        setConversations(current => {
+            const exists = current.some(item => item.conversation_id === conversation.conversation_id);
+            const next = exists
+                ? current.map(item => item.conversation_id === conversation.conversation_id ? conversation : item)
+                : [conversation, ...current];
+
+            return next.sort((a, b) => {
+                const aTime = new Date(a.last_message_at || a.updated_at || a.created_at).getTime();
+                const bTime = new Date(b.last_message_at || b.updated_at || b.created_at).getTime();
+                return bTime - aTime;
+            });
+        });
+
+        setSelectedConversation(current => (
+            current?.conversation_id === conversation.conversation_id ? conversation : current
+        ));
+    }, []);
+
+    const markRead = useCallback(async (conversationId: string) => {
+        const session = getSession();
+        if (!session) return;
+
+        socketRef.current?.emit('message.read', { conversation_id: conversationId });
+        await apiRequest(`/triage-chat/conversations/${conversationId}/read`, {
+            method: 'POST',
+            token: session.access_token
+        }).catch(() => undefined);
+    }, []);
+
+    const loadMessages = useCallback(async (conversationId: string) => {
+        const session = getSession();
+        if (!session) return;
+
+        const response = await apiRequest<MessagesResponse>(`/triage-chat/conversations/${conversationId}/messages?limit=80`, {
+            token: session.access_token
+        });
+        setMessages(response.data?.messages || []);
+        await markRead(conversationId);
+    }, [markRead]);
+
+    const selectConversation = useCallback(async (conversation: TriageConversation) => {
+        const previousId = selectedIdRef.current;
+        if (previousId && previousId !== conversation.conversation_id) {
+            socketRef.current?.emit('conversation.leave', { conversation_id: previousId });
+        }
+
+        selectedIdRef.current = conversation.conversation_id;
+        setSelectedConversation(conversation);
+        setNotesDraft(conversation.doctor_handoff_notes || '');
+        setError('');
+
+        socketRef.current?.emit('conversation.join', { conversation_id: conversation.conversation_id });
+        await loadMessages(conversation.conversation_id);
+    }, [loadMessages]);
+
+    const loadConversations = useCallback(async (silent = false) => {
+        const session = getSession();
+        if (!session) return;
+
+        if (!silent) setIsLoading(true);
+        setError('');
+
+        try {
+            const response = await apiRequest<ConversationsResponse>('/triage-chat/conversations?status=open&limit=60', {
+                token: session.access_token
+            });
+            const next = response.data?.conversations || [];
+            setConversations(next);
+
+            if (!selectedIdRef.current && next.length > 0) {
+                await selectConversation(next[0]);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to load triage conversations.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectConversation]);
+
+    const openCareRequestConversation = useCallback(async (careRequestId: string) => {
+        const session = getSession();
+        if (!session) return;
+
+        setIsLoading(true);
+        setError('');
+
+        try {
+            const response = await apiRequest<ConversationResponse>(`/triage-chat/care-requests/${careRequestId}/conversation`, {
+                method: 'POST',
+                token: session.access_token
+            });
+            const conversation = response.data?.conversation;
+            if (conversation) {
+                mergeConversation(conversation);
+                await selectConversation(conversation);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to open this triage chat.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [mergeConversation, selectConversation]);
+
+    useEffect(() => {
+        const session = getSession();
+        if (!session) return;
+
+        const socket = createTriageChatSocket(session.access_token);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            setIsConnected(true);
+            if (selectedIdRef.current) {
+                socket.emit('conversation.join', { conversation_id: selectedIdRef.current });
+            }
+        });
+        socket.on('disconnect', () => setIsConnected(false));
+        socket.on('connect_error', () => setIsConnected(false));
+
+        socket.on('triage:message_created', (payload: SendMessageResponse) => {
+            if (!payload?.message || !payload?.conversation) return;
+            mergeConversation(payload.conversation);
+
+            if (payload.message.conversation_id === selectedIdRef.current) {
+                setMessages(current => (
+                    current.some(message => message.message_id === payload.message.message_id)
+                        ? current
+                        : [...current, payload.message]
+                ));
+                void markRead(payload.message.conversation_id);
+            }
+        });
+
+        socket.on('triage:notes_updated', (payload: ConversationResponse) => {
+            if (payload?.conversation) {
+                mergeConversation(payload.conversation);
+                if (payload.conversation.conversation_id === selectedIdRef.current) {
+                    setNotesDraft(payload.conversation.doctor_handoff_notes || '');
+                }
+            }
+        });
+
+        socket.on('triage:conversation_closed', (payload: ConversationResponse) => {
+            if (payload?.conversation) mergeConversation(payload.conversation);
+        });
+
+        socket.on('triage:typing_start', (payload: { conversation_id: string; user_id: string; role: string }) => {
+            if (payload.conversation_id !== selectedIdRef.current) return;
+            setTypingUsers(current => ({ ...current, [payload.user_id]: payload.role !== role }));
+        });
+
+        socket.on('triage:typing_stop', (payload: { conversation_id: string; user_id: string }) => {
+            setTypingUsers(current => {
+                const next = { ...current };
+                delete next[payload.user_id];
+                return next;
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+            socketRef.current = null;
+        };
+    }, [markRead, mergeConversation, role]);
+
+    useEffect(() => {
+        const loadTimer = setTimeout(() => {
+            if (initialCareRequestId) {
+                void openCareRequestConversation(initialCareRequestId);
+                return;
+            }
+
+            void loadConversations();
+        }, 0);
+
+        return () => clearTimeout(loadTimer);
+    }, [initialCareRequestId, loadConversations, openCareRequestConversation]);
+
+    useEffect(() => {
+        messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const filteredConversations = useMemo(() => {
+        const value = search.trim().toLowerCase();
+        if (!value) return conversations;
+
+        return conversations.filter(conversation => (
+            `${conversation.patient_name} ${conversation.patient_email || ''} ${conversation.reason || ''} ${conversation.doctor_handoff_notes || ''}`
+                .toLowerCase()
+                .includes(value)
+        ));
+    }, [conversations, search]);
+
+    const sendMessage = async (event: FormEvent) => {
+        event.preventDefault();
+        const body = messageBody.trim();
+        if (!body || !activeConversationId || isSending) return;
+
+        const session = getSession();
+        if (!session) return;
+
+        setIsSending(true);
+        setError('');
+
+        const finish = (result: SendMessageResponse) => {
+            setMessageBody('');
+            mergeConversation(result.conversation);
+            setMessages(current => (
+                current.some(message => message.message_id === result.message.message_id)
+                    ? current
+                    : [...current, result.message]
+            ));
+        };
+
+        try {
+            if (socketRef.current?.connected) {
+                const result = await new Promise<SocketAck<SendMessageResponse>>(resolve => {
+                    socketRef.current?.emit('message.send', { conversation_id: activeConversationId, body }, resolve);
+                });
+
+                if (!result.success || !result.data) {
+                    throw new Error(result.message || 'Unable to send message.');
+                }
+                finish(result.data);
+            } else {
+                const response = await apiRequest<SendMessageResponse>(`/triage-chat/conversations/${activeConversationId}/messages`, {
+                    method: 'POST',
+                    token: session.access_token,
+                    body: JSON.stringify({ body })
+                });
+                if (response.data) finish(response.data);
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to send message.');
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const handleTyping = (value: string) => {
+        setMessageBody(value);
+        if (!activeConversationId || !socketRef.current?.connected) return;
+
+        socketRef.current.emit('typing.start', { conversation_id: activeConversationId });
+
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        typingTimeoutRef.current = setTimeout(() => {
+            socketRef.current?.emit('typing.stop', { conversation_id: activeConversationId });
+        }, 900);
+    };
+
+    const saveNotes = async () => {
+        if (!activeConversationId) return;
+
+        const session = getSession();
+        if (!session) return;
+
+        setIsSavingNotes(true);
+        setError('');
+        setSuccess('');
+
+        try {
+            const response = await apiRequest<ConversationResponse>(`/triage-chat/conversations/${activeConversationId}/handoff-notes`, {
+                method: 'PATCH',
+                token: session.access_token,
+                body: JSON.stringify({ doctor_handoff_notes: notesDraft })
+            });
+
+            if (response.data?.conversation) {
+                mergeConversation(response.data.conversation);
+            }
+            setSuccess('Doctor handoff notes saved.');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to save handoff notes.');
+        } finally {
+            setIsSavingNotes(false);
+        }
+    };
+
+    const hasTyping = Object.values(typingUsers).some(Boolean);
+    const canSend = Boolean(activeConversationId && selectedConversation?.status === 'open');
+
+    if (isLoading) {
+        return (
+            <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
+                <p className="text-gray-500">Loading triage chat...</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-[#4a3428]">Triage Messaging</h2>
+                    <p className="text-gray-600">
+                        {role === 'patient'
+                            ? 'Message the clinical assistant reviewing your active care request.'
+                            : 'Chat with claimed triage patients and prepare notes for Doctor handoff.'}
+                    </p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <span className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${isConnected ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                        {isConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                        {isConnected ? 'Live' : 'Reconnecting'}
+                    </span>
+                    <Button variant="outline" onClick={() => loadConversations(true)} leftIcon={<RefreshCcw className="h-4 w-4" />}>
+                        Refresh
+                    </Button>
+                </div>
+            </div>
+
+            {error && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+            {success && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    <Check className="h-5 w-5 flex-shrink-0" />
+                    <span>{success}</span>
+                </div>
+            )}
+
+            <div className="grid min-h-[660px] grid-cols-1 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-sm xl:grid-cols-[340px_minmax(0,1fr)_320px]">
+                <aside className="border-b border-gray-100 xl:border-b-0 xl:border-r">
+                    <div className="border-b border-gray-100 p-4">
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                                value={search}
+                                onChange={event => setSearch(event.target.value)}
+                                placeholder="Search conversations"
+                                className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                            />
+                        </div>
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto xl:max-h-[600px]">
+                        {filteredConversations.length === 0 ? (
+                            <div className="p-6 text-center text-sm text-gray-500">
+                                <MessageSquare className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+                                No active triage chats yet.
+                            </div>
+                        ) : filteredConversations.map(conversation => {
+                            const active = conversation.conversation_id === activeConversationId;
+                            return (
+                                <button
+                                    key={conversation.conversation_id}
+                                    type="button"
+                                    onClick={() => selectConversation(conversation)}
+                                    className={`w-full border-b border-gray-100 p-4 text-left transition ${active ? 'bg-[#fff4ec]' : 'hover:bg-gray-50'}`}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="truncate font-semibold text-[#4a3428]">{conversation.patient_name}</p>
+                                            <p className="truncate text-xs text-gray-500">{conversation.patient_email || 'Patient'}</p>
+                                        </div>
+                                        {conversation.unread_count > 0 && (
+                                            <span className="rounded-full bg-[#E67E3C] px-2 py-0.5 text-xs font-bold text-white">
+                                                {conversation.unread_count}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="mt-2 line-clamp-2 text-sm text-gray-600">{conversation.reason || 'No request reason recorded.'}</p>
+                                    <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+                                        <span>{formatStatus(conversation.care_request_status)}</span>
+                                        <span>{formatTime(conversation.last_message_at || conversation.updated_at)}</span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </aside>
+
+                <section className="flex min-h-[620px] flex-col">
+                    {selectedConversation ? (
+                        <>
+                            <div className="border-b border-gray-100 p-4">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="text-lg font-bold text-[#4a3428]">{selectedConversation.patient_name}</h3>
+                                            {selectedConversation.urgency && (
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${urgencyClasses[selectedConversation.urgency]}`}>
+                                                    {selectedConversation.urgency}
+                                                </span>
+                                            )}
+                                            <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700">
+                                                {formatStatus(selectedConversation.care_request_status)}
+                                            </span>
+                                        </div>
+                                        <p className="mt-1 max-w-3xl text-sm text-gray-600">{selectedConversation.reason || 'No request reason recorded.'}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                        <Lock className="h-4 w-4 text-[#E67E3C]" />
+                                        Triage thread
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto bg-gray-50/70 p-5">
+                                <div className="space-y-4">
+                                    {messages.length === 0 ? (
+                                        <div className="rounded-lg border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+                                            Start the triage conversation here. Messages are saved for the Doctor handoff.
+                                        </div>
+                                    ) : messages.map(message => {
+                                        const mine = isOwnMessage(message, role);
+                                        if (message.message_type === 'system') {
+                                            return (
+                                                <div key={message.message_id} className="flex justify-center">
+                                                    <span className="rounded-full bg-white px-3 py-1 text-xs text-gray-500 shadow-sm">
+                                                        {message.body}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div key={message.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`max-w-[78%] rounded-lg px-4 py-3 shadow-sm ${mine ? 'bg-[#E67E3C] text-white' : 'border border-gray-100 bg-white text-[#4a3428]'}`}>
+                                                    <p className="whitespace-pre-wrap text-sm leading-6">{message.body}</p>
+                                                    <p className={`mt-2 text-right text-[11px] ${mine ? 'text-white/75' : 'text-gray-400'}`}>
+                                                        {formatTime(message.created_at)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {hasTyping && (
+                                        <div className="text-xs font-medium text-gray-500">The other person is typing...</div>
+                                    )}
+                                    <div ref={messageEndRef} />
+                                </div>
+                            </div>
+
+                            <form onSubmit={sendMessage} className="border-t border-gray-100 bg-white p-4">
+                                {selectedConversation.status !== 'open' && (
+                                    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                        This triage chat is closed and preserved for care handoff.
+                                    </div>
+                                )}
+                                <div className="flex items-end gap-3">
+                                    <textarea
+                                        value={messageBody}
+                                        onChange={event => handleTyping(event.target.value)}
+                                        disabled={!canSend}
+                                        rows={2}
+                                        placeholder={canSend ? 'Type a triage message...' : 'This chat is closed.'}
+                                        className="min-h-[48px] flex-1 resize-none rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C] disabled:bg-gray-100"
+                                    />
+                                    <Button type="submit" disabled={!messageBody.trim() || !canSend} isLoading={isSending} leftIcon={<Send className="h-4 w-4" />}>
+                                        Send
+                                    </Button>
+                                </div>
+                            </form>
+                        </>
+                    ) : (
+                        <div className="flex flex-1 items-center justify-center p-8 text-center text-gray-500">
+                            <div>
+                                <MessageSquare className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+                                <p>Select an active triage conversation.</p>
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                <aside className="border-t border-gray-100 bg-white p-5 xl:border-l xl:border-t-0">
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Care Handoff</p>
+                            <h3 className="mt-1 text-lg font-bold text-[#4a3428]">Doctor Notes</h3>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {canWriteNotes
+                                    ? 'Write concise clinical context for the Doctor before assignment.'
+                                    : 'These notes are prepared by the care team for Doctor handoff.'}
+                            </p>
+                        </div>
+
+                        {selectedConversation ? (
+                            <>
+                                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm">
+                                    <div className="flex items-center gap-2 font-semibold text-[#4a3428]">
+                                        <ClipboardList className="h-4 w-4 text-[#E67E3C]" />
+                                        Request Summary
+                                    </div>
+                                    <p className="mt-3 whitespace-pre-wrap text-gray-700">{selectedConversation.reason || '-'}</p>
+                                    <div className="mt-4 grid gap-2 text-xs text-gray-600">
+                                        <p>Status: <span className="font-semibold capitalize">{formatStatus(selectedConversation.care_request_status)}</span></p>
+                                        <p>Doctor: <span className="font-semibold">{selectedConversation.doctor_name || 'Not assigned yet'}</span></p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <textarea
+                                        value={notesDraft}
+                                        onChange={event => setNotesDraft(event.target.value)}
+                                        disabled={!canWriteNotes}
+                                        rows={9}
+                                        placeholder="Key symptoms, patient preferences, safety concerns, scheduling notes, and suggested specialty."
+                                        className="w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C] disabled:bg-gray-100"
+                                    />
+                                    {canWriteNotes && (
+                                        <Button className="mt-3" fullWidth onClick={saveNotes} isLoading={isSavingNotes} leftIcon={<Save className="h-4 w-4" />}>
+                                            Save Notes
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-green-800">
+                                    <div className="flex items-start gap-2">
+                                        <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                                        <p>When a Doctor is assigned, this thread and the handoff notes remain attached to the care request for continuity.</p>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                                <Stethoscope className="mx-auto mb-3 h-8 w-8 text-gray-300" />
+                                Select a conversation to view handoff details.
+                            </div>
+                        )}
+                    </div>
+                </aside>
+            </div>
+        </div>
+    );
+}
