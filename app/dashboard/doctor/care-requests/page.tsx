@@ -1,22 +1,37 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ComponentType, FormEvent, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest } from '@/lib/api';
-import { getSession, hasRole } from '@/lib/auth';
-import { Button, Input, Select, Textarea, Badge, Modal } from '@/components/ui';
-import { 
-    ClipboardList, 
-    Stethoscope, 
-    Clock, 
-    ShieldAlert, 
-    UserCheck, 
-    RefreshCcw, 
+import { getSession } from '@/lib/auth';
+import { Button, Modal, Select, Textarea } from '@/components/ui';
+import {
+    AlertCircle,
+    CheckCircle2,
+    ClipboardList,
+    Clock,
+    Lock,
+    RefreshCcw,
     Search,
-    MessageSquare,
-    AlertCircle
+    ShieldAlert,
+    Stethoscope,
+    Unlock,
+    UserCheck,
+    Users
 } from 'lucide-react';
+
+type QueueView = 'unclaimed' | 'mine' | 'pending_assignment' | 'all';
+
+type CareRequestStatus =
+    | 'new_request'
+    | 'triage_claimed'
+    | 'triage_in_progress'
+    | 'pending_assignment'
+    | 'assigned'
+    | 'in_treatment'
+    | 'patient_requested_closure';
 
 type CareRequest = {
     care_request_id: string;
@@ -26,6 +41,12 @@ type CareRequest = {
     doctor_id: string | null;
     doctor_name: string | null;
     doctor_email: string | null;
+    claimed_by_user_id: string | null;
+    claimed_by_email: string | null;
+    claimed_at?: string;
+    claim_expires_at?: string;
+    is_claimed: boolean;
+    is_claimed_by_me?: boolean;
     reason: string;
     urgency: 'low' | 'normal' | 'high';
     preferred_specialty?: string;
@@ -33,7 +54,7 @@ type CareRequest = {
     availability?: string;
     patient_notes?: string;
     triage_notes?: string;
-    status: 'new_request' | 'triage_in_progress' | 'pending_assignment' | 'assigned' | 'in_treatment' | 'patient_requested_closure';
+    status: CareRequestStatus;
     created_at: string;
     updated_at: string;
 };
@@ -42,12 +63,18 @@ type CareRequestsResponse = {
     care_requests: CareRequest[];
 };
 
-type AssistantDoctor = {
+type AssignableDoctor = {
     doctor_id: string;
     email: string;
     status: string;
     specialty?: string;
     name: string;
+    credential_status: 'pending' | 'verified' | 'rejected';
+    max_patients: number;
+    active_patient_count: number;
+    available_slots_next_14_days: number;
+    is_available_for_assignment: boolean;
+    disabled_reason?: string | null;
 };
 
 type AssistantMeResponse = {
@@ -64,20 +91,38 @@ type AssistantMeResponse = {
 const urgencyStyles: Record<string, string> = {
     low: 'bg-blue-50 text-blue-700 border-blue-200',
     normal: 'bg-green-50 text-green-700 border-green-200',
-    high: 'bg-red-50 text-red-700 border-red-200',
+    high: 'bg-red-50 text-red-700 border-red-200'
 };
 
 const statusStyles: Record<string, string> = {
     new_request: 'bg-amber-100 text-amber-800 border-amber-200',
+    triage_claimed: 'bg-sky-100 text-sky-800 border-sky-200',
     triage_in_progress: 'bg-blue-100 text-blue-800 border-blue-200',
     pending_assignment: 'bg-purple-100 text-purple-800 border-purple-200',
     assigned: 'bg-emerald-100 text-emerald-800 border-emerald-200',
     in_treatment: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    patient_requested_closure: 'bg-orange-100 text-orange-850 border-orange-200',
+    patient_requested_closure: 'bg-orange-100 text-orange-800 border-orange-200'
 };
+
+const queueTabs: Array<{ key: QueueView; label: string; icon: ComponentType<{ className?: string }> }> = [
+    { key: 'unclaimed', label: 'Unclaimed', icon: Unlock },
+    { key: 'mine', label: 'My Queue', icon: Lock },
+    { key: 'pending_assignment', label: 'Ready to Assign', icon: UserCheck },
+    { key: 'all', label: 'All Scoped', icon: Users }
+];
 
 function formatStatus(status?: string) {
     return (status || '-').replace(/_/g, ' ');
+}
+
+function formatDateTime(value?: string) {
+    if (!value) return '-';
+    return new Date(value).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
 }
 
 export default function AssistantCareRequestsPage() {
@@ -85,28 +130,23 @@ export default function AssistantCareRequestsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [requests, setRequests] = useState<CareRequest[]>([]);
-    const [doctors, setDoctors] = useState<AssistantDoctor[]>([]);
-    const [permissions, setPermissions] = useState<any>(null);
+    const [doctors, setDoctors] = useState<AssignableDoctor[]>([]);
+    const [permissions, setPermissions] = useState<AssistantMeResponse['Assistant']['permissions'] | null>(null);
+    const [queueView, setQueueView] = useState<QueueView>('unclaimed');
+    const [search, setSearch] = useState('');
+    const [urgencyFilter, setUrgencyFilter] = useState('all');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    
-    // Filters & Search
-    const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [urgencyFilter, setUrgencyFilter] = useState('all');
-
-    // Modals
     const [selectedRequest, setSelectedRequest] = useState<CareRequest | null>(null);
     const [assignTarget, setAssignTarget] = useState<CareRequest | null>(null);
     const [selectedDoctorId, setSelectedDoctorId] = useState('');
-    
-    // Triage edit form state
+    const [doctorSearch, setDoctorSearch] = useState('');
     const [triageForm, setTriageForm] = useState({
-        status: 'triage_in_progress' as any,
-        triage_notes: '',
+        status: 'triage_in_progress' as 'triage_in_progress' | 'pending_assignment',
+        triage_notes: ''
     });
 
-    const loadData = async (silent = false) => {
+    const loadData = async (silent = false, nextQueue = queueView) => {
         const session = getSession();
         if (!session) {
             router.push('/auth/login');
@@ -117,21 +157,18 @@ export default function AssistantCareRequestsPage() {
         setError('');
 
         try {
+            const params = new URLSearchParams({ status: 'open', queue: nextQueue, limit: '100' });
+            if (search.trim()) params.set('search', search.trim());
+
             const [profileRes, doctorsRes, requestsRes] = await Promise.all([
                 apiRequest<AssistantMeResponse>('/assistant/me', { token: session.access_token }),
-                apiRequest<{ Doctors: AssistantDoctor[] }>('/assistant/doctors', { token: session.access_token }),
-                apiRequest<CareRequestsResponse>('/assistant/care-requests?status=open', { token: session.access_token })
+                apiRequest<{ Doctors: AssignableDoctor[] }>('/assistant/assignable-doctors', { token: session.access_token }),
+                apiRequest<CareRequestsResponse>(`/assistant/care-requests?${params.toString()}`, { token: session.access_token })
             ]);
 
-            if (profileRes.data?.Assistant) {
-                setPermissions(profileRes.data.Assistant.permissions);
-            }
-            if (doctorsRes.data?.Doctors) {
-                setDoctors(doctorsRes.data.Doctors.filter(d => d.status === 'active'));
-            }
-            if (requestsRes.data?.care_requests) {
-                setRequests(requestsRes.data.care_requests);
-            }
+            setPermissions(profileRes.data?.Assistant.permissions || null);
+            setDoctors(doctorsRes.data?.Doctors || []);
+            setRequests(requestsRes.data?.care_requests || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unable to load clinical triage queue.');
         } finally {
@@ -146,20 +183,77 @@ export default function AssistantCareRequestsPage() {
             return;
         }
 
-        loadData();
+        loadData(false, 'unclaimed');
     }, [router]);
 
-    // Handle Triage Update Submit
-    const handleTriageSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedRequest) return;
+    const canAssign = permissions?.can_assign_patients || false;
+
+    const changeQueue = async (view: QueueView) => {
+        setQueueView(view);
+        await loadData(true, view);
+    };
+
+    const claimRequest = async (request: CareRequest) => {
+        const session = getSession();
+        if (!session) return;
 
         setError('');
         setSuccess('');
         setIsSaving(true);
+        try {
+            await apiRequest(`/assistant/care-requests/${request.care_request_id}/claim`, {
+                method: 'POST',
+                token: session.access_token
+            });
+            setSuccess(`${request.patient_name} is now in your queue.`);
+            await changeQueue('mine');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to claim care request.');
+            await loadData(true);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const releaseRequest = async (request: CareRequest) => {
+        const session = getSession();
+        if (!session) return;
+
+        setError('');
+        setSuccess('');
+        setIsSaving(true);
+        try {
+            await apiRequest(`/assistant/care-requests/${request.care_request_id}/release`, {
+                method: 'POST',
+                token: session.access_token
+            });
+            setSuccess(`${request.patient_name} was returned to the unclaimed queue.`);
+            await loadData(true);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to release care request.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const openTriageModal = (request: CareRequest) => {
+        setSelectedRequest(request);
+        setTriageForm({
+            status: request.status === 'pending_assignment' ? 'pending_assignment' : 'triage_in_progress',
+            triage_notes: request.triage_notes || ''
+        });
+    };
+
+    const handleTriageSubmit = async (event: FormEvent) => {
+        event.preventDefault();
+        if (!selectedRequest) return;
 
         const session = getSession();
         if (!session) return;
+
+        setError('');
+        setSuccess('');
+        setIsSaving(true);
 
         try {
             await apiRequest(`/assistant/care-requests/${selectedRequest.care_request_id}/triage`, {
@@ -167,404 +261,456 @@ export default function AssistantCareRequestsPage() {
                 token: session.access_token,
                 body: JSON.stringify({
                     status: triageForm.status,
-                    triage_notes: triageForm.triage_notes.trim() || undefined,
+                    triage_notes: triageForm.triage_notes.trim() || undefined
                 })
             });
 
-            setSuccess('Triage status updated successfully.');
+            setSuccess('Triage state saved.');
             setSelectedRequest(null);
             await loadData(true);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to update triage notes.');
+            await loadData(true);
         } finally {
             setIsSaving(false);
         }
     };
 
-    // Handle Doctor Assignment Submit
-    const handleAssignSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleAssignSubmit = async (event: FormEvent) => {
+        event.preventDefault();
         if (!assignTarget || !selectedDoctorId) return;
+
+        const session = getSession();
+        if (!session) return;
 
         setError('');
         setSuccess('');
         setIsSaving(true);
 
-        const session = getSession();
-        if (!session) return;
-
         try {
-            await apiRequest(`/assistant/patients/${assignTarget.patient_id}/assign-doctor`, {
+            await apiRequest(`/assistant/care-requests/${assignTarget.care_request_id}/assign-doctor`, {
                 method: 'POST',
                 token: session.access_token,
                 body: JSON.stringify({
                     doctor_id: selectedDoctorId,
-                    force: true, // Assistant reassign confirmation is forced here to allow updating triage assignments
+                    force: false
                 })
             });
 
-            setSuccess(`Successfully assigned patient to the selected Doctor.`);
+            setSuccess('Patient assigned to the selected Doctor.');
             setAssignTarget(null);
             setSelectedDoctorId('');
             await loadData(true);
         } catch (err) {
-            // Check for conflict (e.g. 409 already assigned or modified by someone else)
-            if (err instanceof Error && (err.message.includes('already assigned') || err.message.includes('Conflict'))) {
-                setError('This care request was already triaged or assigned by another staff member. Reloading queue...');
-                setAssignTarget(null);
-                setSelectedDoctorId('');
-                await loadData(true);
-            } else {
-                setError(err instanceof Error ? err.message : 'Failed to save doctor assignment.');
-            }
+            setError(err instanceof Error ? err.message : 'Failed to save doctor assignment.');
+            await loadData(true);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const openTriageModal = (req: CareRequest) => {
-        setSelectedRequest(req);
-        setTriageForm({
-            status: req.status === 'new_request' ? 'triage_in_progress' : req.status,
-            triage_notes: req.triage_notes || '',
-        });
-    };
-
-    // Filter requests
     const filteredRequests = useMemo(() => {
-        return requests.filter(req => {
-            const matchesSearch = !search.trim() || 
-                req.patient_name.toLowerCase().includes(search.toLowerCase()) || 
-                req.patient_email.toLowerCase().includes(search.toLowerCase()) || 
-                req.reason.toLowerCase().includes(search.toLowerCase());
-            
-            const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
-            const matchesUrgency = urgencyFilter === 'all' || req.urgency === urgencyFilter;
-
-            return matchesSearch && matchesStatus && matchesUrgency;
+        return requests.filter(request => {
+            const matchesUrgency = urgencyFilter === 'all' || request.urgency === urgencyFilter;
+            const searchText = `${request.patient_name} ${request.patient_email} ${request.reason} ${request.triage_notes || ''}`.toLowerCase();
+            const matchesSearch = !search.trim() || searchText.includes(search.trim().toLowerCase());
+            return matchesUrgency && matchesSearch;
         });
-    }, [requests, search, statusFilter, urgencyFilter]);
+    }, [requests, search, urgencyFilter]);
 
-    // Stats
-    const stats = useMemo(() => {
-        return {
-            open: requests.length,
-            inProgress: requests.filter(r => r.status === 'triage_in_progress').length,
-            pendingAssign: requests.filter(r => r.status === 'pending_assignment').length,
-        };
-    }, [requests]);
+    const filteredDoctors = useMemo(() => {
+        const value = doctorSearch.trim().toLowerCase();
+        return doctors.filter(doctor => {
+            if (!value) return true;
+            return `${doctor.name} ${doctor.email} ${doctor.specialty || ''}`.toLowerCase().includes(value);
+        });
+    }, [doctors, doctorSearch]);
+
+    const selectedDoctor = doctors.find(doctor => doctor.doctor_id === selectedDoctorId);
+
+    const stats = useMemo(() => ({
+        queue: requests.length,
+        claimed: requests.filter(request => request.is_claimed_by_me).length,
+        ready: requests.filter(request => request.status === 'pending_assignment').length,
+        doctorsAvailable: doctors.filter(doctor => doctor.is_available_for_assignment).length
+    }), [requests, doctors]);
 
     if (isLoading) {
         return (
             <DashboardLayout role="doctor">
-                <div className="flex items-center justify-center h-full min-h-[300px]">
+                <div className="flex min-h-[300px] items-center justify-center">
                     <p className="text-gray-500">Loading clinical triage queue...</p>
                 </div>
             </DashboardLayout>
         );
     }
 
-    const canAssign = permissions?.can_assign_patients || false;
-
     return (
         <DashboardLayout role="doctor">
             <div className="space-y-6">
-                
-                {/* Header */}
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h2 className="text-2xl font-bold text-[#4a3428]">Clinical Care Triage Queue</h2>
-                        <p className="text-gray-600">Review symptoms, triage care requests, and assign patients to matching Doctors.</p>
+                        <p className="text-gray-600">Claim one request, complete triage, then assign the patient to an available Doctor.</p>
                     </div>
                     <Button variant="outline" onClick={() => loadData(true)} leftIcon={<RefreshCcw className="h-4 w-4" />}>
-                        Refresh List
+                        Refresh
                     </Button>
                 </div>
 
-                {/* Notifications & Warnings */}
                 {error && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                         <ShieldAlert className="h-5 w-5 flex-shrink-0" />
                         <span>{error}</span>
                     </div>
                 )}
 
                 {success && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                        {success}
+                    <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                        <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                        <span>{success}</span>
                     </div>
                 )}
 
-                {/* Chat module notification helper */}
-                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-sm text-blue-800 flex items-start gap-3">
-                    <MessageSquare className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                        <span className="font-semibold">Future Chat Integration:</span> When chat is added, starting a conversation with a patient will mark them as "Triage in Progress". Other assistants will instantly see this to avoid double-contacting.
-                    </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    <StatTile label="Current View" value={stats.queue} icon={<ClipboardList className="h-5 w-5" />} />
+                    <StatTile label="Claimed by Me" value={stats.claimed} icon={<Lock className="h-5 w-5" />} tone="blue" />
+                    <StatTile label="Ready to Assign" value={stats.ready} icon={<UserCheck className="h-5 w-5" />} tone="purple" />
+                    <StatTile label="Assignable Doctors" value={stats.doctorsAvailable} icon={<Stethoscope className="h-5 w-5" />} tone="green" />
                 </div>
 
-                {/* Stats cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-                        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Open Care Requests</p>
-                        <h4 className="text-2xl font-bold text-[#4a3428] mt-1">{stats.open}</h4>
-                    </div>
-                    <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-                        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Triage In Progress</p>
-                        <h4 className="text-2xl font-bold text-blue-600 mt-1">{stats.inProgress}</h4>
-                    </div>
-                    <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-                        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Pending Assignment</p>
-                        <h4 className="text-2xl font-bold text-purple-600 mt-1">{stats.pendingAssign}</h4>
-                    </div>
-                    <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-                        <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Triage Access</p>
-                        <span className={`inline-block mt-2 px-2.5 py-1 rounded-full text-xs font-semibold ${canAssign ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {canAssign ? 'Assigning Enabled' : 'View Only'}
-                        </span>
-                    </div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    Claiming a request locks it to your queue for 2 hours. Other assistants can still see ownership in scoped views, but they cannot edit or assign it unless the claim is released or expires.
                 </div>
 
-                {/* Main Queue & Filtering */}
-                <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-                    <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="relative w-full md:w-80">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search by name, email or reason..."
-                                className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
-                            />
+                <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-wrap gap-2">
+                            {queueTabs.map(tab => {
+                                const Icon = tab.icon;
+                                const active = queueView === tab.key;
+                                return (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => changeQueue(tab.key)}
+                                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                                            active
+                                                ? 'border-[#E67E3C] bg-[#fff4ec] text-[#C65F20]'
+                                                : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        {tab.label}
+                                    </button>
+                                );
+                            })}
                         </div>
-                        <div className="flex flex-wrap gap-3">
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
-                            >
-                                <option value="all">All Statuses</option>
-                                <option value="new_request">New Requests</option>
-                                <option value="triage_in_progress">Triage In Progress</option>
-                                <option value="pending_assignment">Pending Assignment</option>
-                                <option value="assigned">Assigned</option>
-                            </select>
+
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                            <div className="relative min-w-[260px]">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    value={search}
+                                    onChange={event => setSearch(event.target.value)}
+                                    onKeyDown={event => {
+                                        if (event.key === 'Enter') loadData(true);
+                                    }}
+                                    placeholder="Search patient or reason"
+                                    className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                                />
+                            </div>
                             <select
                                 value={urgencyFilter}
-                                onChange={(e) => setUrgencyFilter(e.target.value)}
+                                onChange={event => setUrgencyFilter(event.target.value)}
                                 className="rounded-lg border border-gray-300 px-4 py-2.5 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
                             >
-                                <option value="all">All Urgency</option>
-                                <option value="low">Low</option>
-                                <option value="normal">Normal</option>
+                                <option value="all">All urgency</option>
                                 <option value="high">High</option>
+                                <option value="normal">Normal</option>
+                                <option value="low">Low</option>
                             </select>
                         </div>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                        <table className="w-full min-w-[980px] border-collapse text-left text-sm">
                             <thead>
-                                <tr className="border-b border-gray-200 text-sm font-semibold text-gray-600">
-                                    <th className="py-3 px-4">Patient</th>
-                                    <th className="py-3 px-4">Urgency</th>
-                                    <th className="py-3 px-4">Requested Preference</th>
-                                    <th className="py-3 px-4">Status</th>
-                                    <th className="py-3 px-4">Submitted</th>
-                                    <th className="py-3 px-4 text-right">Actions</th>
+                                <tr className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    <th className="px-4 py-3">Patient and Request</th>
+                                    <th className="px-4 py-3">Urgency</th>
+                                    <th className="px-4 py-3">Preferences</th>
+                                    <th className="px-4 py-3">Ownership</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100 text-sm">
+                            <tbody className="divide-y divide-gray-100">
                                 {filteredRequests.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="py-8 text-center text-gray-500">
-                                            No care requests found in the current queue view.
+                                        <td colSpan={6} className="px-4 py-10 text-center text-gray-500">
+                                            No care requests match this queue view.
                                         </td>
                                     </tr>
-                                ) : (
-                                    filteredRequests.map((req) => (
-                                        <tr key={req.care_request_id} className="hover:bg-gray-50/50">
-                                            <td className="py-4 px-4">
-                                                <div>
-                                                    <p className="font-semibold text-[#4a3428]">{req.patient_name}</p>
-                                                    <p className="text-xs text-gray-500">{req.patient_email}</p>
-                                                    <p className="text-xs text-gray-600 mt-1 max-w-xs truncate" title={req.reason}>
-                                                        {req.reason}
-                                                    </p>
+                                ) : filteredRequests.map(request => (
+                                    <tr key={request.care_request_id} className="hover:bg-gray-50/60">
+                                        <td className="px-4 py-4">
+                                            <p className="font-semibold text-[#4a3428]">{request.patient_name}</p>
+                                            <p className="text-xs text-gray-500">{request.patient_email}</p>
+                                            <p className="mt-2 max-w-md text-gray-700">{request.reason}</p>
+                                            {request.patient_notes && (
+                                                <p className="mt-1 max-w-md text-xs text-gray-500">{request.patient_notes}</p>
+                                            )}
+                                            <p className="mt-2 text-xs text-gray-400">Submitted {formatDateTime(request.created_at)}</p>
+                                        </td>
+                                        <td className="px-4 py-4 align-top">
+                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${urgencyStyles[request.urgency]}`}>
+                                                {request.urgency}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-4 align-top text-xs text-gray-600">
+                                            <p>Specialty: <span className="font-semibold">{request.preferred_specialty || 'Any'}</span></p>
+                                            <p>Doctor gender: <span className="font-semibold capitalize">{request.preferred_doctor_gender || 'Any'}</span></p>
+                                            <p className="mt-1 max-w-[220px]">Availability: {request.availability || 'Not specified'}</p>
+                                        </td>
+                                        <td className="px-4 py-4 align-top">
+                                            {request.is_claimed ? (
+                                                <div className="text-xs text-gray-600">
+                                                    <p className="font-semibold text-[#4a3428]">{request.claimed_by_email || 'Claimed assistant'}</p>
+                                                    <p>Claimed {formatDateTime(request.claimed_at)}</p>
+                                                    <p>Expires {formatDateTime(request.claim_expires_at)}</p>
                                                 </div>
-                                            </td>
-                                            <td className="py-4 px-4 whitespace-nowrap">
-                                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${urgencyStyles[req.urgency] || 'bg-gray-100'}`}>
-                                                    {req.urgency}
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                                                    <Unlock className="h-3.5 w-3.5" />
+                                                    Unclaimed
                                                 </span>
-                                            </td>
-                                            <td className="py-4 px-4">
-                                                <div className="text-xs text-gray-600 space-y-0.5">
-                                                    {req.preferred_specialty && <p>Spec: <span className="font-semibold">{req.preferred_specialty}</span></p>}
-                                                    {req.preferred_doctor_gender && req.preferred_doctor_gender !== 'any' && (
-                                                        <p>Gender: <span className="font-semibold capitalize">{req.preferred_doctor_gender}</span></p>
-                                                    )}
-                                                    {req.availability && <p className="truncate max-w-xs">Time: {req.availability}</p>}
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 whitespace-nowrap">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize border ${statusStyles[req.status] || 'bg-gray-100'}`}>
-                                                        {formatStatus(req.status)}
-                                                    </span>
-                                                    {req.status === 'triage_in_progress' && (
-                                                        <span className="text-[10px] text-blue-600 flex items-center gap-1 font-medium">
-                                                            <AlertCircle className="h-3 w-3" /> Being actively reviewed
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 text-gray-500 whitespace-nowrap">
-                                                {new Date(req.created_at).toLocaleDateString()}
-                                            </td>
-                                            <td className="py-4 px-4 text-right space-x-2 whitespace-nowrap">
-                                                <Button size="sm" variant="secondary" onClick={() => openTriageModal(req)}>
-                                                    Triage / Notes
-                                                </Button>
-                                                {canAssign && (
-                                                    <Button size="sm" onClick={() => { setAssignTarget(req); setSelectedDoctorId(''); }}>
-                                                        Assign Doctor
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 align-top">
+                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${statusStyles[request.status] || 'border-gray-200 bg-gray-100 text-gray-700'}`}>
+                                                {formatStatus(request.status)}
+                                            </span>
+                                            {request.triage_notes && (
+                                                <p className="mt-2 max-w-[220px] text-xs text-gray-500">{request.triage_notes}</p>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 align-top">
+                                            <div className="flex flex-col items-end gap-2">
+                                                {queueView === 'unclaimed' || !request.is_claimed ? (
+                                                    <Button size="sm" onClick={() => claimRequest(request)} disabled={isSaving || !canAssign}>
+                                                        Claim
                                                     </Button>
+                                                ) : request.is_claimed_by_me ? (
+                                                    <>
+                                                        <Button size="sm" variant="secondary" onClick={() => openTriageModal(request)}>
+                                                            Triage
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setAssignTarget(request);
+                                                                setSelectedDoctorId('');
+                                                                setDoctorSearch('');
+                                                            }}
+                                                            disabled={!canAssign || request.status !== 'pending_assignment'}
+                                                        >
+                                                            Assign Doctor
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => releaseRequest(request)} disabled={isSaving}>
+                                                            Release
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <span className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-500">
+                                                        Locked by another assistant
+                                                    </span>
                                                 )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
 
-            {/* Triage / Update Notes Modal */}
             <Modal isOpen={Boolean(selectedRequest)} onClose={() => setSelectedRequest(null)} title="Triage Care Request" size="lg">
                 {selectedRequest && (
-                    <form onSubmit={handleTriageSubmit} className="p-6 space-y-4">
-                        {selectedRequest.status === 'triage_in_progress' && (
-                            <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 text-blue-800 p-4 rounded-xl text-sm">
-                                <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <span className="font-semibold">Active Triage Alert:</span> This care request is currently flagged as <strong>Triage In Progress</strong>. If another assistant has initiated work or started communications, check internal notes to avoid overlap.
-                                </div>
-                            </div>
-                        )}
+                    <form onSubmit={handleTriageSubmit} className="space-y-5 p-6">
+                        <RequestSummary request={selectedRequest} />
 
-                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2">
-                            <div className="flex justify-between">
-                                <p className="font-bold text-[#4a3428]">{selectedRequest.patient_name}</p>
-                                <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${urgencyStyles[selectedRequest.urgency]}`}>
-                                    {selectedRequest.urgency} Urgency
-                                </span>
+                        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                            <div className="flex gap-2">
+                                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                                <p>This request is locked to your queue while you triage. Set it to Ready for Match when enough detail is available for assignment.</p>
                             </div>
-                            <p className="text-xs text-gray-500">{selectedRequest.patient_email}</p>
-                            <div className="border-t border-gray-200/60 pt-2 mt-2">
-                                <p className="text-xs font-semibold text-gray-500">Patient Symptom Reason:</p>
-                                <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">{selectedRequest.reason}</p>
-                            </div>
-                            {selectedRequest.patient_notes && (
-                                <div className="pt-2">
-                                    <p className="text-xs font-semibold text-gray-500">Additional Patient Notes:</p>
-                                    <p className="text-sm text-gray-600 mt-1">{selectedRequest.patient_notes}</p>
-                                </div>
-                            )}
                         </div>
 
                         <div className="flex flex-col gap-1.5">
                             <label htmlFor="triage_status" className="text-sm font-medium text-gray-700">Triage Status</label>
-                            <Select 
+                            <Select
                                 id="triage_status"
                                 value={triageForm.status}
-                                onChange={(e) => setTriageForm({...triageForm, status: e.target.value as any})}
+                                onChange={event => setTriageForm({ ...triageForm, status: event.target.value as typeof triageForm.status })}
                                 options={[
-                                    { value: 'triage_in_progress', label: 'Triage In Progress (Active Review)' },
-                                    { value: 'pending_assignment', label: 'Pending Assignment (Ready for Match)' },
+                                    { value: 'triage_in_progress', label: 'Triage in progress' },
+                                    { value: 'pending_assignment', label: 'Ready for Doctor assignment' }
                                 ]}
                             />
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <label htmlFor="triage_notes" className="text-sm font-medium text-gray-700">Internal Clinical Triage Notes</label>
-                            <Textarea 
+                            <label htmlFor="triage_notes" className="text-sm font-medium text-gray-700">Internal Triage Notes</label>
+                            <Textarea
                                 id="triage_notes"
-                                rows={4}
-                                placeholder="Add comments regarding symptoms, matching suggestions, or triage communications."
+                                rows={5}
+                                placeholder="Symptoms clarified, safety concerns, specialty suggestion, scheduling limitations, or communication notes."
                                 value={triageForm.triage_notes}
-                                onChange={(e) => setTriageForm({...triageForm, triage_notes: e.target.value})}
+                                onChange={event => setTriageForm({ ...triageForm, triage_notes: event.target.value })}
                             />
                         </div>
 
-                        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 border-t border-gray-200 pt-4">
+                        <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end">
                             <Button type="button" variant="secondary" onClick={() => setSelectedRequest(null)} disabled={isSaving}>
                                 Cancel
                             </Button>
                             <Button type="submit" isLoading={isSaving}>
-                                Save Triage State
+                                Save Triage
                             </Button>
                         </div>
                     </form>
                 )}
             </Modal>
 
-            {/* Doctor Assignment Modal */}
-            <Modal isOpen={Boolean(assignTarget)} onClose={() => setAssignTarget(null)} title="Assign Patient to Doctor" size="md">
+            <Modal isOpen={Boolean(assignTarget)} onClose={() => setAssignTarget(null)} title="Assign Patient to Doctor" size="xl">
                 {assignTarget && (
-                    <form onSubmit={handleAssignSubmit} className="p-6 space-y-4">
-                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                            <p className="font-bold text-[#4a3428]">{assignTarget.patient_name}</p>
-                            <p className="text-xs text-gray-500">{assignTarget.patient_email}</p>
-                            {assignTarget.preferred_specialty && (
-                                <p className="text-xs text-gray-600 mt-2">
-                                    Preferred Specialty: <span className="font-semibold">{assignTarget.preferred_specialty}</span>
-                                </p>
-                            )}
-                            {assignTarget.preferred_doctor_gender && assignTarget.preferred_doctor_gender !== 'any' && (
-                                <p className="text-xs text-gray-600 mt-0.5">
-                                    Preferred Doctor Gender: <span className="font-semibold capitalize">{assignTarget.preferred_doctor_gender}</span>
-                                </p>
-                            )}
+                    <form onSubmit={handleAssignSubmit} className="space-y-5 p-6">
+                        <RequestSummary request={assignTarget} />
+
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-[#4a3428]">Doctor Options</p>
+                                <p className="text-xs text-gray-500">Only Doctors in your assistant scope are shown. Full, inactive, or unverified Doctors cannot be selected.</p>
+                            </div>
+                            <div className="relative w-full md:w-80">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    value={doctorSearch}
+                                    onChange={event => setDoctorSearch(event.target.value)}
+                                    placeholder="Search Doctors"
+                                    className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                                />
+                            </div>
                         </div>
 
-                        <div className="flex flex-col gap-1.5">
-                            <label htmlFor="doctor_id" className="text-sm font-medium text-gray-700">Select Doctor</label>
-                            <Select 
-                                id="doctor_id"
-                                required
-                                value={selectedDoctorId}
-                                onChange={(e) => setSelectedDoctorId(e.target.value)}
-                                options={[
-                                    { value: '', label: 'Choose a Doctor...' },
-                                    ...doctors.map(d => ({
-                                        value: d.doctor_id,
-                                        label: `${d.name} (${d.specialty || 'General Practice'})`
-                                    }))
-                                ]}
-                            />
+                        <div className="grid gap-3 md:grid-cols-2">
+                            {filteredDoctors.length === 0 ? (
+                                <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-sm text-red-700 md:col-span-2">
+                                    No Doctors are available in your assignment scope.
+                                </div>
+                            ) : filteredDoctors.map(doctor => {
+                                const selected = selectedDoctorId === doctor.doctor_id;
+                                const capacityText = `${doctor.active_patient_count}/${doctor.max_patients} active patients`;
+                                return (
+                                    <button
+                                        key={doctor.doctor_id}
+                                        type="button"
+                                        disabled={!doctor.is_available_for_assignment}
+                                        onClick={() => setSelectedDoctorId(doctor.doctor_id)}
+                                        className={`rounded-lg border p-4 text-left transition ${
+                                            selected
+                                                ? 'border-[#E67E3C] bg-[#fff4ec] ring-2 ring-[#E67E3C]/20'
+                                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-semibold text-[#4a3428]">{doctor.name}</p>
+                                                <p className="text-xs text-gray-500">{doctor.email}</p>
+                                            </div>
+                                            {doctor.credential_status === 'verified' ? (
+                                                <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">Verified</span>
+                                            ) : (
+                                                <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Not verified</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                            <p>Specialty: <span className="font-semibold">{doctor.specialty || 'General'}</span></p>
+                                            <p>{capacityText}</p>
+                                            <p>{doctor.available_slots_next_14_days} open slots in 14 days</p>
+                                            <p className="capitalize">Account: {doctor.status}</p>
+                                        </div>
+                                        {doctor.disabled_reason && (
+                                            <p className="mt-3 rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600">{doctor.disabled_reason}</p>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {doctors.length === 0 && (
-                            <p className="text-xs text-red-500">
-                                There are no active Doctors assigned to your assistant profile. Please contact an admin to assign doctors.
-                            </p>
+                        {selectedDoctor && (
+                            <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800">
+                                {assignTarget.patient_name} will be assigned to {selectedDoctor.name}.
+                            </div>
                         )}
 
-                        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 border-t border-gray-200 pt-4">
+                        <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row sm:justify-end">
                             <Button type="button" variant="secondary" onClick={() => setAssignTarget(null)} disabled={isSaving}>
                                 Cancel
                             </Button>
-                            <Button type="submit" isLoading={isSaving} disabled={!selectedDoctorId || doctors.length === 0}>
+                            <Button type="submit" isLoading={isSaving} disabled={!selectedDoctorId || !selectedDoctor?.is_available_for_assignment}>
                                 Assign Doctor
                             </Button>
                         </div>
                     </form>
                 )}
             </Modal>
-
         </DashboardLayout>
+    );
+}
+
+function StatTile({ label, value, icon, tone = 'orange' }: { label: string; value: number; icon: ReactNode; tone?: 'orange' | 'blue' | 'purple' | 'green' }) {
+    const toneClasses = {
+        orange: 'bg-orange-50 text-orange-700',
+        blue: 'bg-blue-50 text-blue-700',
+        purple: 'bg-purple-50 text-purple-700',
+        green: 'bg-green-50 text-green-700'
+    };
+
+    return (
+        <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+                <span className={`rounded-lg p-2 ${toneClasses[tone]}`}>{icon}</span>
+            </div>
+            <p className="mt-3 text-2xl font-bold text-[#4a3428]">{value}</p>
+        </div>
+    );
+}
+
+function RequestSummary({ request }: { request: CareRequest }) {
+    return (
+        <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <p className="font-bold text-[#4a3428]">{request.patient_name}</p>
+                    <p className="text-xs text-gray-500">{request.patient_email}</p>
+                </div>
+                <span className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${urgencyStyles[request.urgency]}`}>
+                    {request.urgency} urgency
+                </span>
+            </div>
+            <div className="mt-3 border-t border-gray-200 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Patient reason</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{request.reason}</p>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-3">
+                <p>Specialty: <span className="font-semibold">{request.preferred_specialty || 'Any'}</span></p>
+                <p>Doctor gender: <span className="font-semibold capitalize">{request.preferred_doctor_gender || 'Any'}</span></p>
+                <p className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {request.availability || 'No availability note'}</p>
+            </div>
+        </div>
     );
 }

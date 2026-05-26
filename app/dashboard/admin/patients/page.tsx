@@ -74,6 +74,7 @@ const careStyle: Record<string, string> = {
 
 const requestStyle: Record<string, string> = {
     new_request: 'bg-amber-100 text-amber-800',
+    triage_claimed: 'bg-sky-100 text-sky-700',
     triage_in_progress: 'bg-blue-100 text-blue-700',
     pending_assignment: 'bg-purple-100 text-purple-700',
     assigned: 'bg-green-100 text-green-700',
@@ -307,6 +308,7 @@ export default function AdminPatientsPage() {
                         <select value={requestStatus} onChange={event => setRequestStatus(event.target.value)} className="rounded-lg border border-gray-300 px-4 py-2 outline-none focus:ring-2 focus:ring-[#E67E3C]">
                             <option value="open">Open</option>
                             <option value="new_request">New</option>
+                            <option value="triage_claimed">Claimed</option>
                             <option value="triage_in_progress">Triage</option>
                             <option value="pending_assignment">Pending assignment</option>
                             <option value="patient_requested_closure">Closure requested</option>
