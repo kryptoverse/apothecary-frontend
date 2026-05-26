@@ -373,7 +373,7 @@ export default function DoctorProfile() {
     const tabs: Array<{ id: TabId; label: string }> = [
         { id: 'personal', label: 'Personal Info' },
         { id: 'professional', label: 'Professional Info' },
-        { id: 'availability', label: 'Availability' },
+        
         { id: 'settings', label: 'Settings' },
     ];
 
@@ -536,15 +536,7 @@ export default function DoctorProfile() {
                                     </div>
                                 )}
 
-                                {activeTab === 'availability' && (
-                                    <div className="space-y-5">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-gray-600">Set weekly availability slots for session booking.</p>
-                                            {isEditing && (
-                                                <button onClick={addAvailability} className="rounded-full bg-[#E67E3C] px-4 py-2 text-sm font-medium text-white hover:bg-[#d16b2a]">
-                                                    Add Slot
-                                                </button>
-                                            )}
+                                
                                         </div>
 
                                         {draft.Doctor.availability.length === 0 && (
