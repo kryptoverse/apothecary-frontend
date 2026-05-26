@@ -40,7 +40,7 @@ export default function DoctorSchedule() {
     const fetchSlots = async () => {
         try {
             setLoading(true);
-            const data = await apiRequest<SessionBooking[]>('/doctor/slots');
+            const data = await apiRequest('/doctor/slots', 'GET');
             if (data.success) {
                 setSlots(data.data);
             }
@@ -55,14 +55,10 @@ export default function DoctorSchedule() {
         try {
             setIsGenerating(true);
             const dateStr = selectedDate.toISOString().split('T')[0];
-            const res = await apiRequest<{ generated_slots: number }>('/doctor/slots/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date: dateStr,
-                    start_time: genStartTime,
-                    end_time: genEndTime
-                })
+            const res = await apiRequest('/doctor/slots/generate', 'POST', {
+                date: dateStr,
+                start_time: genStartTime,
+                end_time: genEndTime
             });
             if (res.success) {
                 setShowGenerateModal(false);
@@ -162,7 +158,7 @@ export default function DoctorSchedule() {
                     </div>
                     <div className="grid grid-cols-7 gap-2">
                         {days.map((date, index) => {
-                            if (!date) return <div key={`empty-${index}`} className="p-3 min-h-[120px] bg-gray-50 rounded-lg" />;
+                            if (!date) return <div key={\`empty-\${index}\`} className="p-3 min-h-[120px] bg-gray-50 rounded-lg" />;
                             
                             const dateStr = date.toISOString().split('T')[0];
                             const daySlots = slotsByDate[dateStr] || [];
@@ -177,10 +173,10 @@ export default function DoctorSchedule() {
                                         setSelectedDate(date);
                                         setShowGenerateModal(true);
                                     }}
-                                    className={`border rounded-lg p-3 min-h-[120px] cursor-pointer hover:border-[#E67E3C] transition-colors ${isSelected ? 'border-[#E67E3C] bg-[#fef3e8]' : 'border-gray-200 bg-white'}`}
+                                    className={\`border rounded-lg p-3 min-h-[120px] cursor-pointer hover:border-[#E67E3C] transition-colors \${isSelected ? 'border-[#E67E3C] bg-[#fef3e8]' : 'border-gray-200 bg-white'}\`}
                                 >
                                     <div className="text-right mb-2">
-                                        <span className={`text-sm font-bold ${isSelected ? 'text-[#E67E3C]' : 'text-gray-700'}`}>
+                                        <span className={\`text-sm font-bold \${isSelected ? 'text-[#E67E3C]' : 'text-gray-700'}\`}>
                                             {date.getDate()}
                                         </span>
                                     </div>
@@ -223,7 +219,7 @@ export default function DoctorSchedule() {
                                     <div key={slot._id} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-2 hover:shadow-md transition-shadow">
                                         <div className="flex justify-between items-center">
                                             <span className="font-bold text-lg text-[#4a3428]">{timeStr}</span>
-                                            <span className={`px-2 py-1 rounded-full text-xs font-semibold uppercase ${getStatusColor(slot.status)}`}>
+                                            <span className={\`px-2 py-1 rounded-full text-xs font-semibold uppercase \${getStatusColor(slot.status)}\`}>
                                                 {slot.status}
                                             </span>
                                         </div>
