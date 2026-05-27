@@ -28,7 +28,7 @@ export default function VideoSessionPage() {
     const params = useParams<{ sessionId: string }>();
     const sessionId = Array.isArray(params.sessionId) ? params.sessionId[0] : params.sessionId;
     const router = useRouter();
-    const session = getSession();
+    const [session] = useState(() => getSession());
     const clientRef = useRef<IAgoraRTCClient | null>(null);
     const localAudioRef = useRef<IMicrophoneAudioTrack | null>(null);
     const localVideoRef = useRef<ICameraVideoTrack | null>(null);
