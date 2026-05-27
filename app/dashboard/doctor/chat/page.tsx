@@ -10,17 +10,18 @@ function AssistantChatInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const careRequestId = searchParams.get('careRequestId');
+    const session = getSession();
+    const chatRole = session?.user.role === 'doctor' ? 'doctor' : 'assistant';
 
     useEffect(() => {
-        const session = getSession();
-        if (!session || session.user.role !== 'assistant') {
+        if (!session || !['assistant', 'doctor'].includes(session.user.role)) {
             router.push('/auth/login');
         }
-    }, [router]);
+    }, [router, session]);
 
     return (
         <DashboardLayout role="doctor">
-            <TriageChatWorkspace role="assistant" initialCareRequestId={careRequestId} />
+            <TriageChatWorkspace role={chatRole} initialCareRequestId={careRequestId} />
         </DashboardLayout>
     );
 }

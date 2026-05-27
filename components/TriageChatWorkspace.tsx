@@ -23,7 +23,7 @@ import { getSession } from '@/lib/auth';
 import { createTriageChatSocket, type TriageChatSocket } from '@/lib/triageChatSocket';
 import { Button } from '@/components/ui';
 
-type WorkspaceRole = 'assistant' | 'patient' | 'admin';
+type WorkspaceRole = 'assistant' | 'doctor' | 'patient' | 'admin';
 
 type TriageConversationStatus = 'open' | 'closed' | 'archived';
 
@@ -35,13 +35,17 @@ type TriageConversation = {
     patient_email?: string;
     assistant_user_id?: string | null;
     assistant_email?: string | null;
+    doctor_user_id?: string | null;
     doctor_id?: string | null;
     doctor_name?: string | null;
+    doctor_email?: string | null;
+    doctor_specialty?: string | null;
     status: TriageConversationStatus;
     care_request_status?: string;
     urgency?: 'low' | 'normal' | 'high';
     reason?: string;
     doctor_handoff_notes: string;
+    doctor_handoff?: StructuredHandoff;
     unread_count: number;
     last_message_at?: string;
     closed_at?: string;
@@ -55,11 +59,37 @@ type TriageMessage = {
     care_request_id?: string;
     patient_id?: string;
     sender_user_id?: string | null;
-    sender_role: 'patient' | 'assistant' | 'admin' | 'system';
+    sender_role: 'patient' | 'assistant' | 'doctor' | 'admin' | 'system';
     message_type: 'text' | 'system';
     body: string;
     created_at: string;
     delivery_status?: 'sending' | 'sent' | 'failed';
+};
+
+type StructuredHandoff = {
+    patient_concern: string;
+    symptoms: string;
+    urgency: string;
+    preferred_specialty: string;
+    preferred_doctor_gender: string;
+    availability: string;
+    red_flags: string;
+    suggested_doctor_type: string;
+    internal_comments: string;
+};
+
+type AssignableDoctor = {
+    doctor_id: string;
+    email: string;
+    status: string;
+    specialty?: string;
+    name: string;
+    credential_status: 'pending' | 'verified' | 'rejected';
+    max_patients: number;
+    active_patient_count: number;
+    available_slots_next_14_days: number;
+    is_available_for_assignment: boolean;
+    disabled_reason?: string | null;
 };
 
 type ConversationsResponse = {
@@ -91,6 +121,30 @@ const urgencyClasses: Record<string, string> = {
     high: 'bg-red-50 text-red-700 border-red-200'
 };
 
+const emptyHandoff: StructuredHandoff = {
+    patient_concern: '',
+    symptoms: '',
+    urgency: '',
+    preferred_specialty: '',
+    preferred_doctor_gender: '',
+    availability: '',
+    red_flags: '',
+    suggested_doctor_type: '',
+    internal_comments: ''
+};
+
+const handoffFields: Array<{ key: keyof StructuredHandoff; label: string; placeholder: string; rows?: number }> = [
+    { key: 'patient_concern', label: 'Patient concern', placeholder: 'Main reason the patient requested care.', rows: 2 },
+    { key: 'symptoms', label: 'Symptoms', placeholder: 'Relevant symptoms, duration, severity, and context.', rows: 3 },
+    { key: 'urgency', label: 'Urgency', placeholder: 'Low / normal / high plus why.', rows: 2 },
+    { key: 'preferred_specialty', label: 'Preferred specialty', placeholder: 'General Physician, Dermatology, Cardiology...', rows: 2 },
+    { key: 'preferred_doctor_gender', label: 'Preferred Doctor gender', placeholder: 'Any, female, male, or patient-stated preference.', rows: 2 },
+    { key: 'availability', label: 'Availability', placeholder: 'Days/times the patient said work best.', rows: 2 },
+    { key: 'red_flags', label: 'Red flags', placeholder: 'Safety concerns, urgent symptoms, contraindications, or none reported.', rows: 3 },
+    { key: 'suggested_doctor_type', label: 'Suggested Doctor type', placeholder: 'Best matching Doctor profile or specialty.', rows: 2 },
+    { key: 'internal_comments', label: 'Internal comments', placeholder: 'Assistant-only context for Doctor/admin.', rows: 3 }
+];
+
 function formatStatus(value?: string) {
     return (value || '-').replace(/_/g, ' ');
 }
@@ -116,7 +170,7 @@ function formatShortTime(value?: string) {
 }
 
 function isOwnMessage(message: TriageMessage, role: WorkspaceRole) {
-    return message.sender_role === role || (role === 'assistant' && message.sender_role === 'assistant');
+    return message.sender_role === role;
 }
 
 function initials(name?: string) {
@@ -124,18 +178,47 @@ function initials(name?: string) {
     return parts.slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'P';
 }
 
+function normalizeHandoff(handoff?: Partial<StructuredHandoff>, fallback?: TriageConversation | null): StructuredHandoff {
+    return {
+        ...emptyHandoff,
+        patient_concern: handoff?.patient_concern || fallback?.reason || '',
+        urgency: handoff?.urgency || fallback?.urgency || '',
+        preferred_specialty: handoff?.preferred_specialty || '',
+        preferred_doctor_gender: handoff?.preferred_doctor_gender || '',
+        availability: handoff?.availability || '',
+        symptoms: handoff?.symptoms || '',
+        red_flags: handoff?.red_flags || '',
+        suggested_doctor_type: handoff?.suggested_doctor_type || '',
+        internal_comments: handoff?.internal_comments || ''
+    };
+}
+
+function handoffToSummary(handoff: StructuredHandoff) {
+    return handoffFields
+        .map(field => {
+            const value = handoff[field.key]?.trim();
+            return value ? `${field.label}: ${value}` : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+}
+
 export default function TriageChatWorkspace({ role, initialCareRequestId }: { role: WorkspaceRole; initialCareRequestId?: string | null }) {
     const [conversations, setConversations] = useState<TriageConversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<TriageConversation | null>(null);
     const [messages, setMessages] = useState<TriageMessage[]>([]);
     const [messageBody, setMessageBody] = useState('');
-    const [notesDraft, setNotesDraft] = useState('');
+    const [handoffDraft, setHandoffDraft] = useState<StructuredHandoff>(emptyHandoff);
+    const [doctors, setDoctors] = useState<AssignableDoctor[]>([]);
+    const [doctorSearch, setDoctorSearch] = useState('');
+    const [selectedDoctorId, setSelectedDoctorId] = useState('');
     const [search, setSearch] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [isSavingNotes, setIsSavingNotes] = useState(false);
+    const [isAssigningDoctor, setIsAssigningDoctor] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
     const socketRef = useRef<TriageChatSocket | null>(null);
@@ -218,7 +301,8 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
 
         selectedIdRef.current = conversation.conversation_id;
         setSelectedConversation(conversation);
-        setNotesDraft(conversation.doctor_handoff_notes || '');
+        setHandoffDraft(normalizeHandoff(conversation.doctor_handoff, conversation));
+        setSelectedDoctorId(conversation.doctor_id || '');
         setError('');
 
         socketRef.current?.emit('conversation.join', { conversation_id: conversation.conversation_id });
@@ -304,8 +388,14 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
             if (payload?.conversation) {
                 mergeConversation(payload.conversation);
                 if (payload.conversation.conversation_id === selectedIdRef.current) {
-                    setNotesDraft(payload.conversation.doctor_handoff_notes || '');
+                    setHandoffDraft(normalizeHandoff(payload.conversation.doctor_handoff, payload.conversation));
                 }
+            }
+        });
+
+        socket.on('triage:doctor_onboarded', (payload: ConversationResponse) => {
+            if (payload?.conversation) {
+                mergeConversation(payload.conversation);
             }
         });
 
@@ -360,6 +450,25 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
         ));
     }, [conversations, search]);
 
+    const filteredDoctors = useMemo(() => {
+        const value = doctorSearch.trim().toLowerCase();
+        return doctors.filter(doctor => {
+            if (!value) return true;
+            return `${doctor.name} ${doctor.email} ${doctor.specialty || ''}`.toLowerCase().includes(value);
+        });
+    }, [doctorSearch, doctors]);
+
+    useEffect(() => {
+        const session = getSession();
+        if (!session || role !== 'assistant') return;
+
+        apiRequest<{ Doctors: AssignableDoctor[] }>('/assistant/assignable-doctors', {
+            token: session.access_token
+        })
+            .then(response => setDoctors(response.data?.Doctors || []))
+            .catch(() => undefined);
+    }, [role]);
+
     const sendMessage = async (event: FormEvent) => {
         event.preventDefault();
         const body = messageBody.trim();
@@ -368,7 +477,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
         const session = getSession();
         if (!session) return;
 
-        const senderRole = role === 'patient' ? 'patient' : role === 'assistant' ? 'assistant' : 'admin';
+        const senderRole = role === 'patient' ? 'patient' : role === 'assistant' ? 'assistant' : role === 'doctor' ? 'doctor' : 'admin';
         const tempId = `temp:${Date.now()}:${Math.random().toString(36).slice(2)}`;
         const optimisticMessage: TriageMessage = {
             message_id: tempId,
@@ -435,31 +544,80 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
         }, 900);
     };
 
-    const saveNotes = async () => {
+    const persistHandoff = async () => {
         if (!activeConversationId) return;
 
         const session = getSession();
         if (!session) return;
+
+        const summary = handoffToSummary(handoffDraft);
+
+        const response = await apiRequest<ConversationResponse>(`/triage-chat/conversations/${activeConversationId}/handoff-notes`, {
+            method: 'PATCH',
+            token: session.access_token,
+            body: JSON.stringify({
+                doctor_handoff: handoffDraft,
+                doctor_handoff_notes: summary
+            })
+        });
+
+        if (response.data?.conversation) {
+            mergeConversation(response.data.conversation);
+        }
+    };
+
+    const saveNotes = async () => {
+        if (!activeConversationId) return;
 
         setIsSavingNotes(true);
         setError('');
         setSuccess('');
 
         try {
-            const response = await apiRequest<ConversationResponse>(`/triage-chat/conversations/${activeConversationId}/handoff-notes`, {
-                method: 'PATCH',
-                token: session.access_token,
-                body: JSON.stringify({ doctor_handoff_notes: notesDraft })
-            });
-
-            if (response.data?.conversation) {
-                mergeConversation(response.data.conversation);
-            }
+            await persistHandoff();
             setSuccess('Doctor handoff notes saved.');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unable to save handoff notes.');
         } finally {
             setIsSavingNotes(false);
+        }
+    };
+
+    const assignDoctorFromChat = async () => {
+        if (!selectedConversation || !selectedDoctorId) return;
+
+        const session = getSession();
+        if (!session) return;
+
+        setIsAssigningDoctor(true);
+        setError('');
+        setSuccess('');
+
+        try {
+            await persistHandoff();
+            await apiRequest(`/assistant/care-requests/${selectedConversation.care_request_id}/assign-doctor`, {
+                method: 'POST',
+                token: session.access_token,
+                body: JSON.stringify({
+                    doctor_id: selectedDoctorId,
+                    force: false
+                })
+            });
+            setSuccess('Doctor assigned and onboarded into this care thread.');
+            await loadConversations(true);
+            if (selectedIdRef.current) {
+                const response = await apiRequest<ConversationResponse>(`/triage-chat/conversations/${selectedIdRef.current}`, {
+                    token: session.access_token
+                });
+                if (response.data?.conversation) {
+                    mergeConversation(response.data.conversation);
+                    setSelectedConversation(response.data.conversation);
+                }
+            }
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to assign Doctor from chat.');
+        } finally {
+            setIsAssigningDoctor(false);
         }
     };
 
@@ -701,26 +859,105 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                     </div>
                                 </div>
 
-                                <div>
-                                    <textarea
-                                        value={notesDraft}
-                                        onChange={event => setNotesDraft(event.target.value)}
-                                        disabled={!canWriteNotes}
-                                        rows={7}
-                                        placeholder="Key symptoms, patient preferences, safety concerns, scheduling notes, and suggested specialty."
-                                        className="w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C] disabled:bg-gray-100"
-                                    />
+                                <div className="space-y-3">
+                                    {handoffFields.map(field => (
+                                        <div key={field.key}>
+                                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                {field.label}
+                                            </label>
+                                            <textarea
+                                                value={handoffDraft[field.key]}
+                                                onChange={event => setHandoffDraft(current => ({ ...current, [field.key]: event.target.value }))}
+                                                disabled={!canWriteNotes}
+                                                rows={field.rows || 2}
+                                                placeholder={field.placeholder}
+                                                className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C] disabled:bg-gray-100"
+                                            />
+                                        </div>
+                                    ))}
                                     {canWriteNotes && (
                                         <Button className="mt-3" fullWidth onClick={saveNotes} isLoading={isSavingNotes} leftIcon={<Save className="h-4 w-4" />}>
-                                            Save Notes
+                                            Save Handoff
                                         </Button>
                                     )}
                                 </div>
 
+                                {role === 'assistant' && (
+                                    <div className="rounded-lg border border-gray-100 bg-white p-4">
+                                        <div className="mb-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Doctor Assignment</p>
+                                            <p className="mt-1 text-sm text-gray-600">Save the handoff and onboard the selected Doctor into this care thread.</p>
+                                        </div>
+
+                                        {selectedConversation.doctor_id && (
+                                            <div className="mb-3 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
+                                                Assigned to {selectedConversation.doctor_name || 'Doctor'}{selectedConversation.doctor_specialty ? ` - ${selectedConversation.doctor_specialty}` : ''}.
+                                            </div>
+                                        )}
+
+                                        <div className="relative mb-3">
+                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                value={doctorSearch}
+                                                onChange={event => setDoctorSearch(event.target.value)}
+                                                placeholder="Search Doctors"
+                                                className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-[#E67E3C]"
+                                            />
+                                        </div>
+
+                                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                                            {filteredDoctors.length === 0 ? (
+                                                <p className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800">No assignable Doctors found.</p>
+                                            ) : filteredDoctors.map(doctor => {
+                                                const selected = selectedDoctorId === doctor.doctor_id;
+                                                return (
+                                                    <button
+                                                        key={doctor.doctor_id}
+                                                        type="button"
+                                                        disabled={!doctor.is_available_for_assignment}
+                                                        onClick={() => setSelectedDoctorId(doctor.doctor_id)}
+                                                        className={`w-full rounded-lg border p-3 text-left text-sm transition ${
+                                                            selected
+                                                                ? 'border-[#E67E3C] bg-[#fff4ec]'
+                                                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="truncate font-semibold text-[#4a3428]">{doctor.name}</p>
+                                                                <p className="truncate text-xs text-gray-500">{doctor.email}</p>
+                                                            </div>
+                                                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${doctor.is_available_for_assignment ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                {doctor.is_available_for_assignment ? 'Available' : 'Blocked'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2 text-xs text-gray-600">
+                                                            <p>{doctor.specialty || 'General'} - {doctor.active_patient_count}/{doctor.max_patients} active</p>
+                                                            <p>{doctor.available_slots_next_14_days} open slots in 14 days</p>
+                                                        </div>
+                                                        {doctor.disabled_reason && <p className="mt-2 text-xs text-red-600">{doctor.disabled_reason}</p>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <Button
+                                            className="mt-3"
+                                            fullWidth
+                                            onClick={assignDoctorFromChat}
+                                            isLoading={isAssigningDoctor}
+                                            disabled={!selectedDoctorId || Boolean(filteredDoctors.find(doctor => doctor.doctor_id === selectedDoctorId && !doctor.is_available_for_assignment))}
+                                            leftIcon={<Stethoscope className="h-4 w-4" />}
+                                        >
+                                            Save Handoff + Assign Doctor
+                                        </Button>
+                                    </div>
+                                )}
+
                                 <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-green-800">
                                     <div className="flex items-start gap-2">
                                         <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
-                                        <p>When a Doctor is assigned, this thread and the handoff notes remain attached to the care request for continuity.</p>
+                                        <p>When a Doctor is assigned, this thread stays open and the Doctor can review chat history plus the structured handoff.</p>
                                     </div>
                                 </div>
                             </>
