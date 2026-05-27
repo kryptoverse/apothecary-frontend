@@ -248,6 +248,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
     const [resolutionOutcome, setResolutionOutcome] = useState('completed');
     const [resolutionNotes, setResolutionNotes] = useState('');
     const [search, setSearch] = useState('');
+    const [chatTab, setChatTab] = useState<'active' | 'closed'>('active');
     const [isSearchExpanded, setIsSearchExpanded] = useState(true);
     const [isHandoffExpanded, setIsHandoffExpanded] = useState(true);
     const [error, setError] = useState('');
@@ -361,7 +362,8 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
         setError('');
 
         try {
-            const response = await apiRequest<ConversationsResponse>('/triage-chat/conversations?status=open&limit=60', {
+            const statusFilter = chatTab === 'active' ? 'open' : 'closed';
+            const response = await apiRequest<ConversationsResponse>(`/triage-chat/conversations?status=${statusFilter}&limit=60`, {
                 token: session.access_token
             });
             const next = response.data?.conversations || [];
@@ -369,13 +371,16 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
 
             if (!selectedIdRef.current && next.length > 0) {
                 await selectConversation(next[0]);
+            } else if (selectedIdRef.current && !next.some(c => c.conversation_id === selectedIdRef.current)) {
+                setSelectedConversation(null);
+                selectedIdRef.current = null;
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Unable to load triage conversations.');
         } finally {
             setIsLoading(false);
         }
-    }, [selectConversation]);
+    }, [chatTab, selectConversation]);
 
     const openCareRequestConversation = useCallback(async (careRequestId: string) => {
         const session = getSession();
@@ -750,7 +755,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                                     Patient Chats
                                 </p>
-                                <p className="text-sm text-gray-500">{filteredConversations.length} active</p>
+                                <p className="text-sm text-gray-500">{filteredConversations.length} {chatTab}</p>
                             </div>
                             <button
                                 type="button"
@@ -759,6 +764,22 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                 title={isSearchExpanded ? 'Collapse search' : 'Expand search'}
                             >
                                 <ChevronDown className={`h-4 w-4 transition ${isSearchExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                        </div>
+                        <div className="mb-3 flex w-full rounded-lg border border-gray-200 bg-gray-50 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setChatTab('active')}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition ${chatTab === 'active' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Active
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setChatTab('closed')}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition ${chatTab === 'closed' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Concluded
                             </button>
                         </div>
                         {isSearchExpanded && (
