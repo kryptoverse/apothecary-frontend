@@ -712,8 +712,8 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
     }
 
     return (
-        <div className="flex h-[calc(100vh-7rem)] min-h-[620px] flex-col overflow-hidden">
-            <div className="mb-3 flex flex-none flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex h-[calc(100dvh-12rem)] md:h-[calc(100vh-7rem)] min-h-0 md:min-h-[620px] flex-col overflow-hidden">
+            <div className="hidden lg:flex mb-3 flex-none flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 className="text-xl font-bold text-foreground">{title}</h2>
                     <p className="text-sm text-gray-600">{subtitle}</p>
@@ -865,15 +865,15 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <h3 className="truncate text-lg font-bold text-foreground">{selectedConversation.patient_name}</h3>
                                             {selectedConversation.urgency && (
-                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${urgencyClasses[selectedConversation.urgency]}`}>
+                                                <span className={`hidden md:inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${urgencyClasses[selectedConversation.urgency]}`}>
                                                     {selectedConversation.urgency}
                                                 </span>
                                             )}
-                                            <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700">
+                                            <span className="hidden md:inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold capitalize text-blue-700">
                                                 {formatStatus(selectedConversation.care_request_status)}
                                             </span>
                                             </div>
-                                            <p className="mt-1 line-clamp-2 max-w-3xl text-sm text-gray-600">{selectedConversation.reason || 'No request reason recorded.'}</p>
+                                            <p className="hidden md:block mt-1 line-clamp-2 max-w-3xl text-sm text-gray-600">{selectedConversation.reason || 'No request reason recorded.'}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
