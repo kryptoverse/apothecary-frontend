@@ -52,11 +52,14 @@ type TriageConversation = {
 type TriageMessage = {
     message_id: string;
     conversation_id: string;
+    care_request_id?: string;
+    patient_id?: string;
     sender_user_id?: string | null;
     sender_role: 'patient' | 'assistant' | 'admin' | 'system';
     message_type: 'text' | 'system';
     body: string;
     created_at: string;
+    delivery_status?: 'sending' | 'sent' | 'failed';
 };
 
 type ConversationsResponse = {
@@ -142,6 +145,29 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
 
     const canWriteNotes = role === 'assistant' || role === 'admin';
     const activeConversationId = selectedConversation?.conversation_id || null;
+
+    const reconcileIncomingMessage = useCallback((incoming: TriageMessage) => {
+        setMessages(current => {
+            if (current.some(message => message.message_id === incoming.message_id)) {
+                return current;
+            }
+
+            const optimisticIndex = current.findIndex(message => (
+                message.message_id.startsWith('temp:') &&
+                message.conversation_id === incoming.conversation_id &&
+                message.sender_role === incoming.sender_role &&
+                message.body === incoming.body
+            ));
+
+            if (optimisticIndex >= 0) {
+                const next = [...current];
+                next[optimisticIndex] = { ...incoming, delivery_status: 'sent' };
+                return next;
+            }
+
+            return [...current, incoming];
+        });
+    }, []);
 
     const mergeConversation = useCallback((conversation: TriageConversation) => {
         setConversations(current => {
@@ -269,11 +295,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
             mergeConversation(payload.conversation);
 
             if (payload.message.conversation_id === selectedIdRef.current) {
-                setMessages(current => (
-                    current.some(message => message.message_id === payload.message.message_id)
-                        ? current
-                        : [...current, payload.message]
-                ));
+                reconcileIncomingMessage(payload.message);
                 void markRead(payload.message.conversation_id);
             }
         });
@@ -308,7 +330,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
             socket.disconnect();
             socketRef.current = null;
         };
-    }, [markRead, mergeConversation, role]);
+    }, [markRead, mergeConversation, reconcileIncomingMessage, role]);
 
     useEffect(() => {
         const loadTimer = setTimeout(() => {
@@ -346,17 +368,28 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
         const session = getSession();
         if (!session) return;
 
+        const senderRole = role === 'patient' ? 'patient' : role === 'assistant' ? 'assistant' : 'admin';
+        const tempId = `temp:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+        const optimisticMessage: TriageMessage = {
+            message_id: tempId,
+            conversation_id: activeConversationId,
+            care_request_id: selectedConversation?.care_request_id || '',
+            patient_id: selectedConversation?.patient_id || '',
+            sender_role: senderRole,
+            message_type: 'text',
+            body,
+            created_at: new Date().toISOString(),
+            delivery_status: 'sending'
+        };
+
         setIsSending(true);
         setError('');
+        setMessageBody('');
+        setMessages(current => [...current, optimisticMessage]);
 
         const finish = (result: SendMessageResponse) => {
-            setMessageBody('');
             mergeConversation(result.conversation);
-            setMessages(current => (
-                current.some(message => message.message_id === result.message.message_id)
-                    ? current
-                    : [...current, result.message]
-            ));
+            reconcileIncomingMessage(result.message);
         };
 
         try {
@@ -378,6 +411,9 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                 if (response.data) finish(response.data);
             }
         } catch (err) {
+            setMessages(current => current.map(message => (
+                message.message_id === tempId ? { ...message, delivery_status: 'failed' } : message
+            )));
             setError(err instanceof Error ? err.message : 'Unable to send message.');
         } finally {
             setIsSending(false);
@@ -595,7 +631,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                                 <div className={`max-w-[72%] rounded-lg px-4 py-3 shadow-sm ${mine ? 'rounded-br-sm bg-[#E67E3C] text-white' : 'rounded-bl-sm border border-gray-100 bg-white text-[#4a3428]'}`}>
                                                     <p className="whitespace-pre-wrap text-sm leading-6">{message.body}</p>
                                                     <p className={`mt-2 text-right text-[11px] ${mine ? 'text-white/75' : 'text-gray-400'}`}>
-                                                        {formatTime(message.created_at)}
+                                                        {message.delivery_status === 'sending' ? 'Sending...' : message.delivery_status === 'failed' ? 'Failed' : formatTime(message.created_at)}
                                                     </p>
                                                 </div>
                                             </div>
