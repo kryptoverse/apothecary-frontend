@@ -245,6 +245,8 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
     const [doctors, setDoctors] = useState<AssignableDoctor[]>([]);
     const [doctorSearch, setDoctorSearch] = useState('');
     const [selectedDoctorId, setSelectedDoctorId] = useState('');
+    const [resolutionOutcome, setResolutionOutcome] = useState('completed');
+    const [resolutionNotes, setResolutionNotes] = useState('');
     const [search, setSearch] = useState('');
     const [isSearchExpanded, setIsSearchExpanded] = useState(true);
     const [isHandoffExpanded, setIsHandoffExpanded] = useState(true);
@@ -254,6 +256,7 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
     const [isSending, setIsSending] = useState(false);
     const [isSavingNotes, setIsSavingNotes] = useState(false);
     const [isAssigningDoctor, setIsAssigningDoctor] = useState(false);
+    const [isResolving, setIsResolving] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
     const socketRef = useRef<TriageChatSocket | null>(null);
@@ -509,6 +512,33 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
             .then(response => setDoctors(response.data?.Doctors || []))
             .catch(() => undefined);
     }, [role]);
+
+    const resolveCase = async () => {
+        const session = getSession();
+        if (!selectedConversation?.patient_id || !session) return;
+        
+        setIsResolving(true);
+        setError('');
+        setSuccess('');
+        try {
+            await apiRequest(`/doctor/patients/${selectedConversation.patient_id}/treatment-outcome`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    outcome: resolutionOutcome,
+                    doctor_notes: resolutionNotes
+                }),
+                token: session.access_token
+            });
+            await loadConversations(false);
+            setResolutionNotes('');
+            setSuccess('Case resolved successfully.');
+        } catch (err) {
+            console.error('Failed to resolve case:', err);
+            setError(err instanceof Error ? err.message : 'Failed to resolve case.');
+        } finally {
+            setIsResolving(false);
+        }
+    };
 
     const sendMessage = async (event: FormEvent) => {
         event.preventDefault();
@@ -1028,6 +1058,48 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
 
                                 {role !== 'assistant' && (
                                     <VideoSessionPanel careRequestId={selectedConversation.care_request_id} role={role} />
+                                )}
+
+                                {role === 'doctor' && selectedConversation.status === 'open' && (
+                                    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                                        <div className="mb-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Resolve Case</p>
+                                            <p className="mt-1 text-sm text-gray-600">Mark the patient&apos;s care request as complete or refer them out.</p>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Outcome</label>
+                                                <select
+                                                    value={resolutionOutcome}
+                                                    onChange={e => setResolutionOutcome(e.target.value)}
+                                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
+                                                >
+                                                    <option value="completed">Completed</option>
+                                                    <option value="follow_up_needed">Follow Up Needed</option>
+                                                    <option value="referred_out">Referred Out</option>
+                                                    <option value="not_appropriate_for_platform">Not Appropriate for Platform</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Doctor Notes (Optional)</label>
+                                                <textarea
+                                                    value={resolutionNotes}
+                                                    onChange={e => setResolutionNotes(e.target.value)}
+                                                    rows={3}
+                                                    placeholder="Add final clinical notes or referral instructions..."
+                                                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-primary"
+                                                />
+                                            </div>
+                                            <Button
+                                                fullWidth
+                                                onClick={resolveCase}
+                                                isLoading={isResolving}
+                                                leftIcon={<Check className="h-4 w-4" />}
+                                            >
+                                                Resolve Case
+                                            </Button>
+                                        </div>
+                                    </div>
                                 )}
 
                                 <div className="rounded-lg border border-green-100 bg-green-50 p-4 text-sm text-green-800">
