@@ -124,7 +124,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
     const isChatPage = pathname?.includes('/chat');
 
     return (
-        <div className="flex min-h-screen bg-background">
+        <div className={`flex bg-background ${isChatPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'}`}>
             {/* SideNavBar */}
             <aside className="hidden md:flex h-full w-64 fixed left-0 top-0 bg-surface-container-lowest border-r border-outline-variant flex-col p-container-margin gap-base-unit z-50">
                 <div className="mb-8 flex items-center gap-3">
