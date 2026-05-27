@@ -226,7 +226,7 @@ export default function AdminPatientCaseDetailPage() {
         setError(null);
 
         try {
-            const response = await apiRequest<MessagesResponse>(`/triage-chat/conversations/${conversationId}/messages?limit=120`, {
+            const response = await apiRequest<MessagesResponse>(`/triage-chat/conversations/${conversationId}/messages?limit=100`, {
                 token: session.access_token
             });
             setMessages(response.data?.messages || []);
