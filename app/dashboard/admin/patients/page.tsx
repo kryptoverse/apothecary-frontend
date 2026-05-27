@@ -7,6 +7,7 @@ import {
     CheckCircle2,
     ClipboardList,
     Clock,
+    Eye,
     FileText,
     RefreshCcw,
     Search,
@@ -265,10 +266,12 @@ export default function AdminPatientsPage() {
 
         try {
             const patientParams = new URLSearchParams({ page: '1', limit: '200', care_status: careStatus });
+            patientParams.set('_', Date.now().toString());
             if (search.trim()) patientParams.set('search', search.trim());
             if (assigned !== 'all') patientParams.set('assigned', assigned === 'assigned' ? 'true' : 'false');
 
             const requestParams = new URLSearchParams({ page: '1', limit: '200', status: requestStatus });
+            requestParams.set('_', Date.now().toString());
             if (search.trim()) requestParams.set('search', search.trim());
 
             const [statsRes, patientRes, requestRes, doctorRes] = await Promise.all([
@@ -510,6 +513,7 @@ export default function AdminPatientsPage() {
                                         reason: patient.illness_description
                                     })}
                                     onUnassign={() => void unassignPatient(patient)}
+                                    onView={() => router.push(`/dashboard/admin/patients/${patient.patient_id}`)}
                                 />
                             ))}
                         </div>
@@ -689,7 +693,7 @@ export default function AdminPatientsPage() {
     );
 }
 
-function PatientManagementRow({ patient, isSaving, onAssign, onUnassign }: { patient: Patient; isSaving: boolean; onAssign: () => void; onUnassign: () => void }) {
+function PatientManagementRow({ patient, isSaving, onAssign, onUnassign, onView }: { patient: Patient; isSaving: boolean; onAssign: () => void; onUnassign: () => void; onView: () => void }) {
     const patientName = patient.name || nameFromEmail(patient.email);
 
     return (
@@ -738,6 +742,9 @@ function PatientManagementRow({ patient, isSaving, onAssign, onUnassign }: { pat
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2 lg:mt-0 lg:justify-end">
+                <Button size="sm" variant="secondary" onClick={onView} leftIcon={<Eye className="h-4 w-4" />}>
+                    View
+                </Button>
                 <Button size="sm" variant="outline" onClick={onAssign}>
                     {patient.doctor_id ? 'Reassign' : 'Assign'}
                 </Button>
