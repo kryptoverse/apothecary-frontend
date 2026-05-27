@@ -121,6 +121,8 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
 
     const menuItems = role === 'admin' ? adminMenuItems : role === 'patient' ? PatientMenuItems : backendRole === 'assistant' ? AssistantMenuItems : DoctorMenuItems;
 
+    const isChatPage = pathname?.includes('/chat');
+
     return (
         <div className="flex min-h-screen bg-background">
             {/* SideNavBar */}
@@ -215,7 +217,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-auto flex flex-col p-0 md:p-6">{children}</main>
+                <main className={`flex-1 flex flex-col p-0 md:p-6 ${isChatPage ? 'overflow-hidden' : 'overflow-auto'}`}>{children}</main>
             </div>
 
             {/* Bottom Navigation Bar (Mobile & Tablet) */}
