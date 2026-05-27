@@ -458,9 +458,9 @@ export default function AdminPatientsPage() {
                     ))}
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-                    <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
-                        <div className="mb-4 flex flex-col gap-3 lg:grid lg:grid-cols-[1fr_160px_160px_auto]">
+                <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+                    <div className="min-w-0 rounded-lg border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+                        <div className="mb-4 flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(130px,160px)_minmax(150px,170px)_auto]">
                             <div className="relative">
                                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                 <input
@@ -487,77 +487,31 @@ export default function AdminPatientsPage() {
                             <Button size="sm" onClick={loadData} leftIcon={<Search className="h-4 w-4" />}>Apply</Button>
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[900px]">
-                                <thead>
-                                    <tr className="border-b border-gray-200">
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Patient</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Care</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Doctor</th>
-                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Latest Request</th>
-                                        <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {isLoading && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">Loading patients...</td></tr>}
-                                    {!isLoading && patients.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-500">No patients found.</td></tr>}
-                                    {!isLoading && patients.map(patient => (
-                                        <tr key={patient.patient_id} className="border-b border-gray-100 hover:bg-gray-50">
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar name={patient.name || patient.email || 'Patient'} />
-                                                    <div>
-                                                        <p className="font-medium text-[#4a3428]">{patient.name || nameFromEmail(patient.email)}</p>
-                                                        <p className="text-sm text-gray-600">{patient.email}</p>
-                                                        {patient.illness_description && <p className="mt-1 max-w-sm text-xs text-gray-500">{patient.illness_description}</p>}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <span className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${careStyles[patient.care_status] || 'border-gray-200 bg-gray-100 text-gray-600'}`}>
-                                                    {label(patient.care_status)}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4 text-sm text-gray-600">
-                                                {patient.doctor_id ? (
-                                                    <div>
-                                                        <p className="font-medium text-gray-700">{patient.doctor_name || patient.doctor_email || 'Assigned'}</p>
-                                                        {patient.doctor_assigned_at && <p className="text-xs text-gray-500">Since {formatDate(patient.doctor_assigned_at)}</p>}
-                                                    </div>
-                                                ) : 'Unassigned'}
-                                            </td>
-                                            <td className="px-4 py-4 text-sm text-gray-600">
-                                                {patient.latest_request ? (
-                                                    <div>
-                                                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${requestStyles[patient.latest_request.status] || 'border-gray-200 bg-gray-100 text-gray-600'}`}>
-                                                            {label(patient.latest_request.status)}
-                                                        </span>
-                                                        <p className="mt-1 max-w-xs truncate">{patient.latest_request.reason}</p>
-                                                    </div>
-                                                ) : '-'}
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex justify-end gap-2">
-                                                    <Button size="sm" variant="outline" onClick={() => openAssign({
-                                                        patient_id: patient.patient_id,
-                                                        patient_name: patient.name || nameFromEmail(patient.email),
-                                                        patient_email: patient.email,
-                                                        current_doctor_id: patient.doctor_id,
-                                                        reason: patient.illness_description
-                                                    })}>
-                                                        {patient.doctor_id ? 'Reassign' : 'Assign'}
-                                                    </Button>
-                                                    {patient.doctor_id && (
-                                                        <Button size="sm" variant="ghost" disabled={isSaving} onClick={() => void unassignPatient(patient)}>
-                                                            Unassign
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="space-y-3">
+                            <div className="hidden rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(105px,0.5fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(150px,0.6fr)] lg:items-center lg:gap-4">
+                                <span>Patient</span>
+                                <span>Care</span>
+                                <span>Doctor</span>
+                                <span>Latest Request</span>
+                                <span className="text-right">Actions</span>
+                            </div>
+                            {isLoading && <p className="rounded-lg bg-gray-50 p-6 text-center text-sm text-gray-500">Loading patients...</p>}
+                            {!isLoading && patients.length === 0 && <p className="rounded-lg bg-gray-50 p-6 text-center text-sm text-gray-500">No patients found.</p>}
+                            {!isLoading && patients.map(patient => (
+                                <PatientManagementRow
+                                    key={patient.patient_id}
+                                    patient={patient}
+                                    isSaving={isSaving}
+                                    onAssign={() => openAssign({
+                                        patient_id: patient.patient_id,
+                                        patient_name: patient.name || nameFromEmail(patient.email),
+                                        patient_email: patient.email,
+                                        current_doctor_id: patient.doctor_id,
+                                        reason: patient.illness_description
+                                    })}
+                                    onUnassign={() => void unassignPatient(patient)}
+                                />
+                            ))}
                         </div>
                     </div>
 
@@ -732,6 +686,68 @@ export default function AdminPatientsPage() {
                 )}
             </Modal>
         </DashboardLayout>
+    );
+}
+
+function PatientManagementRow({ patient, isSaving, onAssign, onUnassign }: { patient: Patient; isSaving: boolean; onAssign: () => void; onUnassign: () => void }) {
+    const patientName = patient.name || nameFromEmail(patient.email);
+
+    return (
+        <div className="min-w-0 rounded-lg border border-gray-100 bg-white p-4 shadow-sm transition hover:border-orange-100 hover:bg-orange-50/20 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(105px,0.5fr)_minmax(0,1fr)_minmax(0,1.1fr)_minmax(150px,0.6fr)] lg:items-center lg:gap-4">
+            <div className="min-w-0">
+                <div className="flex min-w-0 items-start gap-3">
+                    <Avatar name={patientName || 'Patient'} />
+                    <div className="min-w-0">
+                        <p className="truncate font-semibold text-[#4a3428]">{patientName}</p>
+                        <p className="truncate text-sm text-gray-600">{patient.email || 'No email available'}</p>
+                        {patient.illness_description && <p className="mt-1 line-clamp-2 text-xs text-gray-500">{patient.illness_description}</p>}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 lg:mt-0">
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${careStyles[patient.care_status] || 'border-gray-200 bg-gray-100 text-gray-600'}`}>
+                    {label(patient.care_status)}
+                </span>
+            </div>
+
+            <div className="mt-4 min-w-0 text-sm text-gray-600 lg:mt-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Doctor</p>
+                {patient.doctor_id ? (
+                    <div className="min-w-0">
+                        <p className="truncate font-medium text-gray-700">{patient.doctor_name || patient.doctor_email || 'Assigned'}</p>
+                        {patient.doctor_assigned_at && <p className="text-xs text-gray-500">Since {formatDate(patient.doctor_assigned_at)}</p>}
+                    </div>
+                ) : (
+                    <p className="font-medium text-gray-500">Unassigned</p>
+                )}
+            </div>
+
+            <div className="mt-4 min-w-0 text-sm text-gray-600 lg:mt-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 lg:hidden">Latest Request</p>
+                {patient.latest_request ? (
+                    <div className="min-w-0">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${requestStyles[patient.latest_request.status] || 'border-gray-200 bg-gray-100 text-gray-600'}`}>
+                            {label(patient.latest_request.status)}
+                        </span>
+                        <p className="mt-1 line-clamp-2 text-gray-600">{patient.latest_request.reason}</p>
+                    </div>
+                ) : (
+                    <p className="text-gray-500">No request</p>
+                )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 lg:mt-0 lg:justify-end">
+                <Button size="sm" variant="outline" onClick={onAssign}>
+                    {patient.doctor_id ? 'Reassign' : 'Assign'}
+                </Button>
+                {patient.doctor_id && (
+                    <Button size="sm" variant="ghost" disabled={isSaving} onClick={onUnassign}>
+                        Unassign
+                    </Button>
+                )}
+            </div>
+        </div>
     );
 }
 
