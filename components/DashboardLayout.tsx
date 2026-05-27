@@ -130,7 +130,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
                         <Hospital className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h1 className="font-headline-sm text-headline-sm text-primary">Serene Health</h1>
+                        <h1 className="font-headline-sm text-headline-sm text-primary">Apothecary</h1>
                         <p className="text-label-md font-label-md text-on-surface-variant capitalize">{backendRole.replace('_', ' ')} Portal</p>
                     </div>
                 </div>
@@ -165,11 +165,7 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
             {/* Main Content Area */}
             <div className="flex-grow ml-64 flex flex-col">
                 {/* TopNavBar */}
-                <header className="sticky top-0 bg-surface-bright shadow-sm h-16 w-full flex justify-between items-center px-container-margin py-base-unit z-40">
-                    <div className="flex items-center flex-grow max-w-xl bg-surface-container-low rounded-full px-4 py-2 border border-outline-variant">
-                        <span className="material-symbols-outlined text-on-surface-variant mr-2">search</span>
-                        <input className="bg-transparent border-none focus:ring-0 w-full text-body-md font-body-md placeholder:text-on-surface-variant outline-none" placeholder="Search requests, doctors, or records..." type="text"/>
-                    </div>
+                <header className="sticky top-0 bg-surface-bright shadow-sm h-16 w-full flex justify-end items-center px-container-margin py-base-unit z-40">
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-4">
                             <NotificationBell role={role} />

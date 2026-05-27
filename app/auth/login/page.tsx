@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { Hospital } from 'lucide-react';
 import { Input, Button, Checkbox, FeatureList, StatsGrid } from '@/components/ui';
 import { getDashboardPath, startPortalLogin, verifyAdminSigninOtp } from '@/lib/auth';
 
@@ -68,8 +69,15 @@ export default function Login() {
         <div className="min-h-screen flex">
             <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-white">
                 <div className="max-w-md w-full">
-                    <Link href="/" className="flex justify-center">
-                        <Image src="/logo.webp" height={80} width={300} alt="Apothecary Logo" className="mx-auto" />
+                    <Link href="/" className="flex justify-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-primary-container rounded-xl flex items-center justify-center shadow-sm">
+                                <Hospital className="w-7 h-7 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-bold text-primary tracking-tight">Apothecary</h1>
+                            </div>
+                        </div>
                     </Link>
 
                     <div>
@@ -166,7 +174,7 @@ export default function Login() {
 
                     </form>
 
-                    <div className="mt-4 p-4 bg-gradient-to-br from-[var(--accent)] to-[var(--secondary)] rounded-xl border border-primary/20">
+                    <div className="mt-4 p-4 bg-surface-container-low rounded-xl border border-outline-variant">
                         <div className="flex items-start space-x-3">
                             <svg className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
@@ -182,7 +190,7 @@ export default function Login() {
                 </div>
             </div>
 
-            <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-[var(--foreground)] via-brown to-[var(--foreground)] relative overflow-hidden">
+            <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary to-secondary-dark relative overflow-hidden">
                 <div className="absolute inset-0 opacity-10">
                     <div className="absolute top-20 left-20 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
                     <div className="absolute bottom-20 right-20 w-96 h-96 bg-primary rounded-full blur-3xl"></div>

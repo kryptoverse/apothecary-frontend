@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { Hospital } from 'lucide-react';
 import { Input, Button, Checkbox, FeatureList, StatsGrid } from '@/components/ui';
 import { apiRequest } from '@/lib/api';
 
@@ -128,7 +129,7 @@ export default function Signup() {
     return (
         <div className="min-h-screen flex">
             {/* Left Side - Branding */}
-            <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-[var(--foreground)] via-brown to-[var(--foreground)] relative overflow-hidden">
+            <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary to-secondary-dark relative overflow-hidden">
                 {/* Background Pattern */}
                 <div className="absolute inset-0 opacity-10">
                     <div className="absolute top-20 left-20 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
@@ -170,8 +171,15 @@ export default function Signup() {
             {/* Right Side - Form */}
             <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-white">
                 <div className="max-w-md w-full">
-                    <Link href="/" className="flex justify-center">
-                        <Image src="/logo.webp" height={80} width={300} alt="Apothecary Logo" className="mx-auto" />
+                    <Link href="/" className="flex justify-center mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-primary-container rounded-xl flex items-center justify-center shadow-sm">
+                                <Hospital className="w-7 h-7 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-bold text-primary tracking-tight">Apothecary</h1>
+                            </div>
+                        </div>
                     </Link>
 
                     <div>
