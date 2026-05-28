@@ -13,8 +13,7 @@ export default function Navbar() {
                     {/* Logo */}
                     <Link href="/" className="flex items-center space-x-2">
                         <div className="text-2xl font-bold">
-                            <span className="text-foreground">THINK</span>
-                            <span className="text-primary"> WELL+</span>
+                            <span className="text-[var(--on-surface)]">Apo</span><span className="text-[var(--primary)]">thecary</span>
                         </div>
                     </Link>
 

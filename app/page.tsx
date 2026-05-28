@@ -107,7 +107,7 @@ export default function Home() {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-[var(--accent)] via-[var(--secondary)] to-[var(--accent)] py-20 overflow-hidden">
+      <section className="relative bg-gradient-to-br from-[var(--surface-container-low)] via-white to-[var(--accent)] py-20 overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-20 left-10 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
@@ -126,7 +126,7 @@ export default function Home() {
                 Nurture Your Mind,
                 <span className="text-primary"> Transform Your Life</span>
               </h1>
-              <p className="text-xl text-brown mb-8 leading-relaxed">
+              <p className="text-xl text-[var(--on-surface-variant)] mb-8 leading-relaxed">
                 Connect with certified mental health professionals from the comfort of your home.
                 Start your journey to emotional wellness today with personalized Consultations.
               </p>
@@ -147,7 +147,7 @@ export default function Home() {
               </div>
 
               {/* Trust Badges */}
-              <div className="flex items-center space-x-6 text-sm text-gray-600">
+              <div className="flex items-center space-x-6 text-sm text-gray-700">
                 <div className="flex items-center space-x-2">
                   <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -296,9 +296,9 @@ export default function Home() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {specialties.map((specialty, index) => (
-              <div key={index} className="bg-gradient-to-br from-[var(--accent)] to-[var(--secondary)] rounded-2xl p-6 text-center hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group cursor-pointer">
+              <div key={index} className="bg-gradient-to-br from-[var(--primary-fixed)] to-[var(--accent)] rounded-2xl p-6 text-center hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group cursor-pointer border border-[var(--outline-variant)]">
                 <div className="text-4xl mb-3 group-hover:scale-110 transition-transform duration-300">{specialty.icon}</div>
-                <p className="font-semibold text-foreground">{specialty.name}</p>
+                <p className="font-semibold text-[var(--on-surface)]">{specialty.name}</p>
               </div>
             ))}
           </div>
@@ -427,7 +427,7 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-br from-[var(--foreground)] to-brown text-white relative overflow-hidden">
+      <section className="py-20 bg-gradient-to-br from-[var(--primary-dark)] via-[var(--primary)] to-[var(--secondary-dark)] text-white relative overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-primary rounded-full blur-3xl"></div>
@@ -438,21 +438,21 @@ export default function Home() {
           <h2 className="text-4xl lg:text-5xl font-bold mb-6">
             Ready to Start Your Wellness Journey?
           </h2>
-          <p className="text-xl mb-8 text-gray-300 leading-relaxed">
+          <p className="text-xl mb-8 text-blue-100 leading-relaxed">
             Join thousands of people who have found peace, growth, and healing with Apothecary.
             Take the first step towards better mental health today.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
             <Link
               href="/auth/signup"
-              className="inline-block bg-gradient-to-r from-primary to-primary-dark text-white px-10 py-4 rounded-full text-lg font-medium hover:shadow-2xl transition-all duration-300 group"
+              className="inline-block bg-white text-[var(--primary-dark)] px-10 py-4 rounded-full text-lg font-bold hover:shadow-2xl hover:bg-[var(--accent)] transition-all duration-300 group"
             >
               Get Started Free
               <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
             </Link>
             <Link
               href="/contact"
-              className="inline-block border-2 border-white text-white px-10 py-4 rounded-full text-lg font-medium hover:bg-white hover:text-foreground transition-all duration-300"
+              className="inline-block border-2 border-white text-white px-10 py-4 rounded-full text-lg font-medium hover:bg-white hover:text-[var(--primary-dark)] transition-all duration-300"
             >
               Contact Us
             </Link>

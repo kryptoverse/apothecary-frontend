@@ -2,19 +2,18 @@ import Link from 'next/link';
 
 export default function Footer() {
     return (
-        <footer className="bg-foreground text-white mt-auto">
+        <footer className="bg-[var(--primary-dark)] text-white mt-auto">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     {/* Brand */}
                     <div className="col-span-1 md:col-span-2">
                         <div className="text-2xl font-bold mb-4">
-                            <span className="text-white">THINK</span>
-                            <span className="text-primary"> WELL+</span>
+                            <span className="text-white">Apo</span><span className="text-[var(--inverse-primary)]">thecary</span>
                         </div>
-                        <p className="text-gray-300 mb-4">
+                        <p className="text-blue-200 mb-4">
                             Professional mental health counseling and wellness platform connecting patients with certified Assistants.
                         </p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-blue-300">
                             © 2026 Apothecary. All rights reserved.
                         </p>
                     </div>
