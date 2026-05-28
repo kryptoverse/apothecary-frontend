@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import DoctorInviteBanner from '@/components/DoctorInviteBanner';
 import { getSession, hasRole } from '@/lib/auth';
 import { apiRequest, getApiBaseUrl } from '@/lib/api';
 import { Button, Avatar } from '@/components/ui';
@@ -250,6 +251,9 @@ export default function PatientDashboard() {
                         {error}
                     </div>
                 )}
+
+                {/* Doctor Invite Banner — highest priority, shown before everything else */}
+                <DoctorInviteBanner onAccepted={loadDashboard} />
 
                 {/* Profile Completion Prompt */}
                 {profile?.patient && !profile.patient.full_name && (
