@@ -175,19 +175,44 @@ export default function DoctorPatients() {
                 apiRequest<DoctorPatientResponse>('/doctor/patients', { token: session.access_token }),
                 apiRequest<PatientInviteResponse>('/doctor/patient-invites', { token: session.access_token }),
             ]);
-            const assignedPatients = (patientsResponse.data?.patients || []).map((patient) => ({
-                invite_id: patient.patient_id,
-                email: patient.email,
-                patient_id: patient.patient_id,
-                status: patient.status === 'active' ? 'accepted' as const : 'pending' as const,
-                expires_at: patient.updated_at || patient.created_at,
-                created_at: patient.created_at,
-                is_expired: false,
-                care_status: patient.care_status,
-                illness_description: patient.illness_description,
-                doctor_assigned_at: patient.doctor_assigned_at,
-            }));
-            setInvites([...assignedPatients, ...(invitesResponse.data?.invites || [])]);
+            const patientsResponseData = patientsResponse.data?.patients || [];
+            const invitesResponseData = invitesResponse.data?.invites || [];
+
+            const patientMap = new Map();
+            
+            const assignedPatients = patientsResponseData.map((patient) => {
+                const mapped = {
+                    invite_id: patient.patient_id,
+                    email: patient.email,
+                    patient_id: patient.patient_id,
+                    status: patient.status === 'active' ? 'accepted' as const : 'pending' as const,
+                    expires_at: patient.updated_at || patient.created_at,
+                    created_at: patient.created_at,
+                    is_expired: false,
+                    care_status: patient.care_status,
+                    illness_description: patient.illness_description,
+                    doctor_assigned_at: patient.doctor_assigned_at,
+                };
+                patientMap.set(mapped.email.toLowerCase(), mapped);
+                return mapped;
+            });
+
+            const mergedInvites = [];
+            for (const invite of invitesResponseData) {
+                const email = invite.email.toLowerCase();
+                if (patientMap.has(email)) {
+                    const existing = patientMap.get(email);
+                    if (new Date(invite.created_at) < new Date(existing.created_at)) {
+                        existing.created_at = invite.created_at;
+                    }
+                    existing.expires_at = invite.expires_at;
+                    existing.used_at = invite.used_at || existing.created_at;
+                } else {
+                    mergedInvites.push(invite);
+                }
+            }
+
+            setInvites([...Array.from(patientMap.values()), ...mergedInvites]);
         } catch (error) {
             setNotice({
                 type: 'error',
