@@ -8,10 +8,10 @@ export default function Footer() {
                     {/* Brand */}
                     <div className="col-span-1 md:col-span-2">
                         <div className="text-2xl font-bold mb-4">
-                            <span className="text-white">Apo</span><span className="text-[var(--inverse-primary)]">thecary</span>
+                            <span className="text-[var(--on-primary)]">Apo</span><span className="text-[var(--primary-fixed-dim)]">thecary</span>
                         </div>
-                        <p className="text-blue-200 mb-4">
-                            Professional mental health counseling and wellness platform connecting patients with certified Assistants.
+                        <p className="text-blue-100 mb-4 leading-relaxed font-medium">
+                            Professional medical care and wellness platform connecting patients with certified Doctors.
                         </p>
                         <p className="text-sm text-blue-300">
                             © 2026 Apothecary. All rights reserved.
@@ -23,22 +23,22 @@ export default function Footer() {
                         <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
                         <ul className="space-y-2">
                             <li>
-                                <Link href="/" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/" className="text-blue-200 hover:text-white transition-colors">
                                     Home
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/about" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/about" className="text-blue-200 hover:text-white transition-colors">
                                     About Us
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/pricing" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/pricing" className="text-blue-200 hover:text-white transition-colors">
                                     Pricing
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/contact" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/contact" className="text-blue-200 hover:text-white transition-colors">
                                     Contact
                                 </Link>
                             </li>
@@ -50,22 +50,22 @@ export default function Footer() {
                         <h3 className="text-lg font-semibold mb-4">Support</h3>
                         <ul className="space-y-2">
                             <li>
-                                <Link href="/auth/login" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/auth/login" className="text-blue-200 hover:text-white transition-colors">
                                     Login
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/auth/signup" className="text-gray-300 hover:text-primary transition-colors">
+                                <Link href="/auth/signup" className="text-blue-200 hover:text-white transition-colors">
                                     Sign Up
                                 </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-primary transition-colors">
+                                <a href="#" className="text-blue-200 hover:text-white transition-colors">
                                     Privacy Policy
                                 </a>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-primary transition-colors">
+                                <a href="#" className="text-blue-200 hover:text-white transition-colors">
                                     Terms of Service
                                 </a>
                             </li>

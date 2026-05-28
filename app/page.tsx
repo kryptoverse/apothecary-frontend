@@ -9,14 +9,14 @@ export default function Home() {
       role: "Marketing Professional",
       image: "SM",
       rating: 5,
-      text: "Apothecary has been a game-changer for my mental health journey. The Assistants are incredibly supportive and understanding."
+      text: "Apothecary has been a game-changer for my health journey. The doctors are incredibly supportive and understanding."
     },
     {
       name: "James Rodriguez",
       role: "Software Engineer",
       image: "JR",
       rating: 5,
-      text: "The convenience of online Clinical Care combined with professional care has made it so much easier to prioritize my Clinic."
+      text: "The convenience of online care combined with professional doctors has made it so much easier to prioritize my health."
     },
     {
       name: "Emily Chen",
@@ -35,7 +35,7 @@ export default function Home() {
         </svg>
       ),
       title: "Licensed Professionals",
-      description: "All our Assistants are licensed, certified, and have extensive experience in mental health care."
+      description: "All our doctors are licensed, certified, and have extensive experience in healthcare."
     },
     {
       icon: (
@@ -53,7 +53,7 @@ export default function Home() {
         </svg>
       ),
       title: "Personalized Plans",
-      description: "Customized Clinical Care plans tailored to your unique needs and mental health goals."
+      description: "Customized care plans tailored to your unique needs and health goals."
     },
     {
       icon: (
@@ -62,7 +62,7 @@ export default function Home() {
         </svg>
       ),
       title: "Quick Matching",
-      description: "Get matched with the right Assistant within 24 hours based on your preferences and needs."
+      description: "Get matched with the right doctor within 24 hours based on your preferences and needs."
     },
     {
       icon: (
@@ -71,7 +71,7 @@ export default function Home() {
         </svg>
       ),
       title: "Group Sessions",
-      description: "Join group Consultations to connect with others facing similar challenges."
+      description: "Join group consultations to connect with others facing similar challenges."
     },
     {
       icon: (
@@ -80,7 +80,7 @@ export default function Home() {
         </svg>
       ),
       title: "Progress Tracking",
-      description: "Monitor your mental health journey with detailed progress reports and insights."
+      description: "Monitor your health journey with detailed progress reports and insights."
     }
   ];
 
@@ -107,40 +107,39 @@ export default function Home() {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-[var(--surface-container-low)] via-white to-[var(--accent)] py-20 overflow-hidden">
+      <section className="relative bg-[var(--surface-container-lowest)] py-20 overflow-hidden border-b border-gray-100">
         {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-20 left-10 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-primary rounded-full blur-3xl"></div>
+        <div className="absolute inset-0 opacity-[0.03]">
+          <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="order-2 lg:order-1">
               <div className="inline-block mb-4">
-                <span className="bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-semibold">
-                  🎯 Your Clinic Partner
+                <span className="bg-[var(--primary-container)] text-[var(--on-primary-container)] px-4 py-2 rounded-full text-sm font-semibold shadow-sm">
+                  🎯 Your Care Partner
                 </span>
               </div>
-              <h1 className="text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
-                Nurture Your Mind,
-                <span className="text-primary"> Transform Your Life</span>
+              <h1 className="text-5xl lg:text-6xl font-extrabold text-[var(--on-background)] mb-6 leading-tight">
+                Nurture Your Health,
+                <span className="text-[var(--primary)]"> Transform Your Life</span>
               </h1>
-              <p className="text-xl text-[var(--on-surface-variant)] mb-8 leading-relaxed">
-                Connect with certified mental health professionals from the comfort of your home.
-                Start your journey to emotional wellness today with personalized Consultations.
+              <p className="text-xl text-[var(--on-surface-variant)] mb-8 leading-relaxed font-medium">
+                Connect with certified medical professionals from the comfort of your home.
+                Start your journey to complete wellness today with personalized care.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
                 <Link
                   href="/auth/signup"
-                  className="bg-gradient-to-r from-primary to-primary-dark text-white px-8 py-4 rounded-full text-lg font-medium hover:shadow-xl transition-all duration-300 text-center group"
+                  className="bg-[var(--primary)] text-white px-8 py-4 rounded-full text-lg font-bold hover:shadow-lg hover:bg-[var(--primary-dark)] transition-all duration-300 text-center group"
                 >
                   Get Started Free
                   <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
                 </Link>
                 <Link
                   href="/pricing"
-                  className="border-2 border-primary text-primary px-8 py-4 rounded-full text-lg font-medium hover:bg-primary hover:text-white transition-all duration-300 text-center"
+                  className="bg-[var(--surface-container-high)] text-[var(--on-surface)] px-8 py-4 rounded-full text-lg font-bold hover:bg-[var(--surface-variant)] transition-all duration-300 text-center"
                 >
                   View Pricing
                 </Link>

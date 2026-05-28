@@ -932,11 +932,31 @@ export default function TriageChatWorkspace({ role, initialCareRequestId }: { ro
                                     ) : messages.map(message => {
                                         const mine = isOwnMessage(message, role);
                                         if (message.message_type === 'system') {
+                                            const hasVideoLink = message.body.includes('[Click here to join](#video-session)');
+                                            const bodyText = message.body.replace('[Click here to join](#video-session)', '');
+                                            
                                             return (
-                                                <div key={message.message_id} className="flex justify-center">
-                                                    <span className="rounded-full bg-white px-3 py-1 text-xs text-gray-500 shadow-sm">
-                                                        {message.body}
+                                                <div key={message.message_id} className="flex flex-col items-center gap-2">
+                                                    <span className="rounded-full bg-white px-3 py-1 text-xs text-gray-500 shadow-sm text-center">
+                                                        {bodyText}
                                                     </span>
+                                                    {hasVideoLink && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const activeSession = upcomingSessions.find(s => s.status === 'active');
+                                                                if (activeSession) {
+                                                                    router.push(`/dashboard/video-session/${activeSession.video_session_id}`);
+                                                                } else {
+                                                                    // Fallback if the active session hasn't loaded yet
+                                                                    router.push('/dashboard/patient/video-session'); // Adjust to generic route if needed
+                                                                }
+                                                            }}
+                                                            className="flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-bold text-white shadow-md transition-transform active:scale-95 hover:bg-[var(--primary-dark)]"
+                                                        >
+                                                            <Video className="h-4 w-4" />
+                                                            Join Video Session
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         }
