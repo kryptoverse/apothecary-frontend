@@ -52,10 +52,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         const socket = createTriageChatSocket(session.access_token);
 
-        socket.on('notification:new', (payload: { notification: ApiNotification }) => {
+        socket.on('notification:new', (payload: ApiNotification) => {
             setUnreadCount(prev => prev + 1);
-            setRecentNotifications(prev => [payload.notification, ...prev].slice(0, 5));
-            setToastMsg({ title: payload.notification.title, body: payload.notification.body });
+            setRecentNotifications(prev => [payload, ...prev].slice(0, 5));
+            setToastMsg({ title: payload.title, body: payload.body });
             
             setTimeout(() => {
                 setToastMsg(null);
