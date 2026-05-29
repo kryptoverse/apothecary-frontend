@@ -6,18 +6,18 @@ import DashboardLayout from '@/components/DashboardLayout';
 import NotificationsPageContent from '@/components/NotificationsPageContent';
 import { hasRole } from '@/lib/auth';
 
-export default function AdminNotificationsPage() {
+export default function PatientNotificationsPage() {
     const router = useRouter();
 
     useEffect(() => {
-        if (!hasRole('admin')) {
+        if (!hasRole('patient')) {
             router.push('/auth/login');
         }
     }, [router]);
 
     return (
-        <DashboardLayout role="admin">
-            <NotificationsPageContent role="admin" />
+        <DashboardLayout role="patient">
+            <NotificationsPageContent role="patient" />
         </DashboardLayout>
     );
 }

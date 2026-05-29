@@ -190,8 +190,13 @@ export default function VideoSessionPanel({ careRequestId, role }: { careRequest
                                 <p className="text-xs text-gray-500">{session.max_duration_minutes} min - {session.status}</p>
                             </div>
                             {(role === 'doctor' || role === 'patient') && (
-                                <Button size="sm" onClick={() => joinSession(session.video_session_id)} leftIcon={<Phone className="h-4 w-4" />}>
-                                    Join
+                                <Button 
+                                    size="sm" 
+                                    onClick={() => joinSession(session.video_session_id)} 
+                                    disabled={new Date().getTime() > new Date(session.scheduled_end_at).getTime() + 10 * 60 * 1000}
+                                    leftIcon={<Phone className="h-4 w-4" />}
+                                >
+                                    {new Date().getTime() > new Date(session.scheduled_end_at).getTime() + 10 * 60 * 1000 ? 'Expired' : 'Join'}
                                 </Button>
                             )}
                         </div>
