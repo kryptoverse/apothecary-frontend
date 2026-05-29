@@ -59,7 +59,7 @@ export default function NotificationBell({ role }: NotificationBellProps) {
 
             {/* Notification Dropdown */}
             {isOpen && (
-                <div className="absolute -right-2 sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-[360px] bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[400px] flex flex-col">
+                <div className="fixed left-4 right-4 top-[70px] mx-auto max-w-[360px] sm:absolute sm:left-auto sm:-right-2 sm:top-auto sm:mt-2 sm:w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[400px] flex flex-col">
                     {/* Header */}
                     <div className="p-3 border-b border-gray-200">
                         <div className="flex items-center justify-between">

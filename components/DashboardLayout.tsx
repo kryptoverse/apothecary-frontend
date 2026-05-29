@@ -138,7 +138,25 @@ export default function DashboardLayout({
 
     return (
         <NotificationProvider>
-            <div className={`flex bg-background ${isChatPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'}`}>
+            {/* Mobile Blocker for Staff */}
+            {(role === 'admin' || role === 'doctor' || backendRole === 'assistant') && (
+                <div className="md:hidden fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 text-center shadow-2xl">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                        <Activity className="w-8 h-8 text-primary" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-3">Desktop Required</h2>
+                    <p className="text-gray-600 mb-6 leading-relaxed">
+                        For security and full administrative control, the <strong>{backendRole.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())} Portal</strong> is only accessible on a laptop or desktop device.
+                    </p>
+                    <div className="bg-gray-50 rounded-xl p-4 w-full border border-gray-100">
+                        <p className="text-sm text-gray-500 flex items-center gap-2 justify-center">
+                            <Hospital className="w-4 h-4" /> Please open this link on your computer.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            <div className={`${(role === 'admin' || role === 'doctor' || backendRole === 'assistant') ? 'hidden md:flex' : 'flex'} bg-background ${isChatPage ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} w-full`}>
                 {/* SideNavBar */}
                 <aside className="hidden md:flex h-full w-64 fixed left-0 top-0 bg-surface-container-lowest border-r border-outline-variant flex-col p-container-margin gap-base-unit z-50">
                     <div className="mb-8 flex items-center gap-3">
