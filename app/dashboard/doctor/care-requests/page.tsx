@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiRequest } from '@/lib/api';
 import { getSession } from '@/lib/auth';
+import { useNotificationContext } from '@/providers/NotificationProvider';
 import { Button, Modal, Select, Textarea } from '@/components/ui';
 import {
     AlertCircle,
@@ -130,6 +131,7 @@ function formatDateTime(value?: string) {
 
 export default function AssistantCareRequestsPage() {
     const router = useRouter();
+    const { careRequestTick } = useNotificationContext();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [requests, setRequests] = useState<CareRequest[]>([]);
@@ -189,7 +191,7 @@ export default function AssistantCareRequestsPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadData(false, 'unclaimed');
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [router]);
+    }, [router, careRequestTick]);
 
     const canAssign = permissions?.can_assign_patients || false;
     const currentUserId = getSession()?.user.user_id;

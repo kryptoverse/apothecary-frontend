@@ -20,6 +20,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Avatar, Button, Modal } from '@/components/ui';
 import { apiRequest } from '@/lib/api';
 import { getSession, hasRole } from '@/lib/auth';
+import { useNotificationContext } from '@/providers/NotificationProvider';
 
 type CareStatus = 'needs_care' | 'assigned' | 'in_treatment' | 'treated' | 'inactive';
 
@@ -235,6 +236,7 @@ function getAdminStatusMessage(status: CareRequestStatus) {
 
 export default function AdminPatientsPage() {
     const router = useRouter();
+    const { careRequestTick } = useNotificationContext();
     const [patients, setPatients] = useState<Patient[]>([]);
     const [requests, setRequests] = useState<CareRequest[]>([]);
     const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -290,7 +292,7 @@ export default function AdminPatientsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [assigned, careStatus, requestStatus, router, search]);
+    }, [assigned, careStatus, requestStatus, router, search, careRequestTick]);
 
     useEffect(() => {
         if (!hasRole('admin')) {

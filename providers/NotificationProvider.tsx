@@ -10,12 +10,14 @@ interface NotificationContextType {
     unreadCount: number;
     triggerRefresh: () => void;
     recentNotifications: ApiNotification[];
+    careRequestTick: number;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
     unreadCount: 0,
     triggerRefresh: () => {},
-    recentNotifications: []
+    recentNotifications: [],
+    careRequestTick: 0
 });
 
 export const useNotificationContext = () => useContext(NotificationContext);
@@ -24,6 +26,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const [unreadCount, setUnreadCount] = useState(0);
     const [recentNotifications, setRecentNotifications] = useState<ApiNotification[]>([]);
     const [refreshTick, setRefreshTick] = useState(0);
+    const [careRequestTick, setCareRequestTick] = useState(0);
     const [toastMsg, setToastMsg] = useState<{ title: string; body: string } | null>(null);
 
     const triggerRefresh = useCallback(() => setRefreshTick(t => t + 1), []);
@@ -62,14 +65,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             }, 5000);
         });
 
+        socket.on('care_request:created', () => {
+            setCareRequestTick(t => t + 1);
+        });
+        socket.on('care_request:updated', () => {
+            setCareRequestTick(t => t + 1);
+        });
+
         return () => {
             socket.off('notification:new');
+            socket.off('care_request:created');
+            socket.off('care_request:updated');
             socket.disconnect();
         };
     }, []);
 
     return (
-        <NotificationContext.Provider value={{ unreadCount, triggerRefresh, recentNotifications }}>
+        <NotificationContext.Provider value={{ unreadCount, triggerRefresh, recentNotifications, careRequestTick }}>
             {children}
             
             {/* Global Toast Popup */}
