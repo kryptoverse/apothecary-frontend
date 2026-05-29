@@ -17,7 +17,10 @@ import {
     User,
     LogOut,
     KeyRound,
-    ClipboardList
+    ClipboardList,
+    Activity,
+    UserCheck,
+    Settings
 } from 'lucide-react';
 import { getSession } from '@/lib/auth';
 import { apiRequest } from '@/lib/api';
@@ -93,9 +96,13 @@ export default function DashboardLayout({
 
     const adminMenuItems = [
         { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard/admin' },
-        { name: 'Users', icon: Users, path: '/dashboard/admin/users' },
-        { name: 'System Settings', icon: FileText, path: '/dashboard/admin/settings' },
+        { name: 'Patients', icon: Hospital, path: '/dashboard/admin/patients' },
+        { name: 'Doctors', icon: Users, path: '/dashboard/admin/doctors' },
+        { name: 'Assistants', icon: User, path: '/dashboard/admin/assistants' },
+        { name: 'Assignments', icon: UserCheck, path: '/dashboard/admin/assignments' },
+        { name: 'Analytics', icon: Activity, path: '/dashboard/admin/analytics' },
         { name: 'Notifications', icon: Bell, path: '/dashboard/admin/notifications' },
+        { name: 'Settings', icon: Settings, path: '/dashboard/admin/settings' },
     ];
 
     const DoctorMenuItems = [
